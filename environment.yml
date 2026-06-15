@@ -1,0 +1,17 @@
+name: emit-pics
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.10
+  - numpy
+  - pandas
+  - xarray
+  - netCDF4
+  - rasterio
+  - matplotlib
+  - pyyaml
+  - jupyter
+  - pip
+  - pip:
+    - earthaccess

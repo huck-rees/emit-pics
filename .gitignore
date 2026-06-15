@@ -1,0 +1,43 @@
+# Data and outputs — large files, never commit
+data/
+outputs/
+
+# Credentials
+.netrc
+_netrc
+credentials/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Conda / venv
+.conda/
+*.conda
+env/
+venv/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_metadata/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Misc
+*.log

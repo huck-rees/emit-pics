@@ -1,0 +1,36 @@
+# Pseudo-Invariant Calibration Sites (PICS) for EMIT temporal stability analysis.
+#
+# Fill in center_lat, center_lon from the primary reference source (e.g.,
+# Cosnefroy et al. 1996, CEOS CalVal portal, or your own GPS survey).
+# roi_size_km defines a square ROI centered on the site.
+
+sites:
+  libya_4:
+    name: "Libya 4"
+    center_lat: null   # TODO: fill from primary source
+    center_lon: null   # TODO: fill from primary source
+    roi_size_km: 50    # square ROI side length in km
+
+  algeria_3:
+    name: "Algeria 3"
+    center_lat: null   # TODO: fill from primary source
+    center_lon: null   # TODO: fill from primary source
+    roi_size_km: 50
+
+  libya_1:
+    name: "Libya 1"
+    center_lat: null   # TODO: fill from primary source
+    center_lon: null   # TODO: fill from primary source
+    roi_size_km: 50
+
+  mauritania_1:
+    name: "Mauritania 1"
+    center_lat: null   # TODO: fill from primary source
+    center_lon: null   # TODO: fill from primary source
+    roi_size_km: 50
+
+  mauritania_2:
+    name: "Mauritania 2"
+    center_lat: null   # TODO: fill from primary source
+    center_lon: null   # TODO: fill from primary source
+    roi_size_km: 50
