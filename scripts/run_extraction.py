@@ -20,7 +20,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from emit_pics.config import load_sites
+from emit_pics.config import get_site
 from emit_pics.extract import (
     authenticate,
     download_granules,
@@ -66,21 +66,13 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Load site config (will raise if coordinates are still null).
+    # Load the requested site (only validates that one site's coordinates).
     try:
-        sites = load_sites()
-    except ValueError as exc:
+        site = get_site(args.site)
+    except (KeyError, ValueError) as exc:
         logger.error(str(exc))
         sys.exit(1)
 
-    if args.site not in sites:
-        logger.error(
-            "Unknown site '%s'. Available: %s",
-            args.site, ", ".join(sites.keys()),
-        )
-        sys.exit(1)
-
-    site = sites[args.site]
     lat = site["center_lat"]
     lon = site["center_lon"]
     data_dir = Path(args.data_dir)

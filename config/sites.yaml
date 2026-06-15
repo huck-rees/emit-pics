@@ -3,13 +3,36 @@
 # Fill in center_lat, center_lon from the primary reference source (e.g.,
 # Cosnefroy et al. 1996, CEOS CalVal portal, or your own GPS survey).
 # roi_size_km defines a square ROI centered on the site.
+#
+# Optional fields (add per site as available):
+#   elevation_m    — site elevation in meters above sea level
+#   utm_zone       — UTM zone number (append N or S hemisphere if needed)
+#   cnes_bounds    — CNES core ROI bounding box (ul, ur, ll, lr corners)
 
 sites:
   libya_4:
     name: "Libya 4"
-    center_lat: null   # TODO: fill from primary source
-    center_lon: null   # TODO: fill from primary source
-    roi_size_km: 50    # square ROI side length in km
+    # Source: USGS ECCOE Cal/Val site registry (CEOS/CNES reference).
+    center_lat: 28.55    # decimal degrees N
+    center_lon: 23.39    # decimal degrees E
+    roi_size_km: 10      # square ROI side length — sized for EMIT 60 m pixels
+    elevation_m: 118     # meters above sea level
+    utm_zone: "34N"
+    #
+    # NOTE on center_lon: 23.39 E is the official CEOS/CNES value. An alternate
+    # published value of 23.99 E appears in some references but is an outlier
+    # and should NOT be used.
+    #
+    # NOTE on elevation: 118 m can be cross-checked against EMIT's elevation
+    # layer over the ROI as a location sanity check.
+    #
+    # CNES core ROI bounding box (decimal degrees). The small EMIT ROI must
+    # sit within these bounds, on clean dunes, away from scene edges.
+    cnes_bounds:
+      ul: { lat: 28.65, lon: 23.29 }
+      ur: { lat: 28.65, lon: 23.49 }
+      ll: { lat: 28.45, lon: 23.29 }
+      lr: { lat: 28.45, lon: 23.49 }
 
   algeria_3:
     name: "Algeria 3"
