@@ -1,7 +1,6 @@
 name: emit-pics
 channels:
   - conda-forge
-  - defaults
 dependencies:
   - python>=3.10
   - numpy
@@ -9,9 +8,12 @@ dependencies:
   - xarray
   - netCDF4
   - rasterio
+  - geopandas
   - matplotlib
   - pyyaml
   - jupyter
+  - rioxarray
+  - h5netcdf
   - pip
   - pip:
     - earthaccess
