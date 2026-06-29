@@ -257,3 +257,90 @@ def patches_covered_by_granule(
         coverage[pid] = covering
 
     return coverage
+
+
+# ============================================================
+# PLOTTING
+# ============================================================
+def plot_patch_coverage(
+    patches: gpd.GeoDataFrame,
+    site: gpd.GeoDataFrame,
+    coverage: dict[str, dict[str, list[str]]],
+    product_titles: dict[str, str],
+    suptitle: str,
+):
+    """Build a one-map-per-product figure of patches colored by granule count.
+
+    Each panel shows the patch grid (drawn in the patches' native CRS, which
+    is typically a UTM projection) shaded by the number of granules that fully
+    cover each patch, with the PICS site boundary overlaid and every patch
+    annotated with its id and granule count.
+
+    The figure is assembled and returned but **not** saved or shown — the
+    caller decides what to do with it, keeping this library free of side
+    effects.  ``matplotlib`` is imported lazily inside the function so that
+    callers who only use the search/coverage helpers do not need it installed.
+
+    Parameters
+    ----------
+    patches : gpd.GeoDataFrame
+        Patches with ``patch_id`` and ``geometry`` columns, in a projected
+        CRS (e.g. UTM).  Panels are drawn in this CRS.
+    site : gpd.GeoDataFrame
+        Single-row PICS site GeoDataFrame; its boundary is overlaid on every
+        panel.  Reprojected to the patches' CRS internally.
+    coverage : dict[str, dict[str, list[str]]]
+        Mapping ``product_label -> {patch_id -> [granule_ur, ...]}`` as built
+        by :func:`patches_covered_by_granule` for each product.
+    product_titles : dict[str, str]
+        Ordered mapping ``product_label -> human-readable title``.  One panel
+        is drawn per entry, in this order.
+    suptitle : str
+        Figure-level title.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The assembled figure.
+    """
+    import matplotlib.pyplot as plt
+
+    labels = list(product_titles)
+    site_proj = site.to_crs(patches.crs)
+
+    fig, axes = plt.subplots(1, len(labels), figsize=(8 * len(labels), 8))
+    if len(labels) == 1:
+        axes = [axes]
+
+    for ax, label in zip(axes, labels):
+        gmap = patches.copy()
+        gmap["n_granules"] = gmap["patch_id"].map(
+            lambda pid: len(coverage.get(label, {}).get(pid, []))
+        )
+
+        site_proj.boundary.plot(ax=ax, color="black", linewidth=1.6, zorder=3)
+        gmap.plot(
+            ax=ax, column="n_granules", cmap="viridis_r",
+            edgecolor="white", linewidth=0.5, legend=True,
+            legend_kwds={"label": f"{label} granules", "shrink": 0.7},
+        )
+
+        for _, prow in gmap.iterrows():
+            cpt = prow.geometry.centroid
+            ax.annotate(
+                f"{prow['patch_id']}\n{prow['n_granules']}",
+                (cpt.x, cpt.y), ha="center", va="center",
+                fontsize=7, color="white", fontweight="bold", zorder=5,
+            )
+
+        ax.set_title(
+            f"{product_titles[label]} — fully-covering scenes per patch",
+            fontsize=11,
+        )
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_aspect("equal")
+
+    fig.suptitle(suptitle, fontsize=13, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    return fig

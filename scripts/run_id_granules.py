@@ -29,12 +29,19 @@ EMIT_PRODUCTS = {
     "L2A_RFL": "EMITL2ARFL",
 }
 
+# Human-readable titles used for the per-product figure panels.
+EMIT_PRODUCT_TITLES = {
+    "L1B_RAD": "L1B Radiance",
+    "L2A_RFL": "L2A Reflectance",
+}
+
 # Paths (relative to the repo root assumed two levels above this file)
 _REPO_ROOT = Path(__file__).resolve().parent.parent          # .../Code/EMIT
 _DATA_ROOT = _REPO_ROOT.parent.parent / "Data"               # .../JPL/Data
 PICS_GPKG  = _DATA_ROOT / "ROIs" / "northafrican_pics.gpkg"
 PATCH_DIR  = _DATA_ROOT / "ROIs" / "patches"
 OUT_DIR_FP = _DATA_ROOT / "ROIs"                             # footprints output
+FIG_DIR    = Path(r"C:\Users\huckr\Desktop\JPL\Figures")     # coverage figure
 
 # ============================================================
 # Ensure the project root is on sys.path so 'emit_pics' is
@@ -44,6 +51,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 import earthaccess
 import geopandas as gpd
+import matplotlib.pyplot as plt
 import pandas as pd
 
 from emit_pics.id_granules import (
@@ -52,6 +60,7 @@ from emit_pics.id_granules import (
     search_granules,
     footprints_to_gdf,
     patches_covered_by_granule,
+    plot_patch_coverage,
 )
 from emit_pics.patch_generator import _safe_filename
 
@@ -195,7 +204,27 @@ def main() -> None:
     print(f"  {len(new_dict)} new row(s) for {PATCH_SIZE_KM} km; "
           f"{len(out_dict)} row(s) total")
 
-    # 9. Summary.
+    # 9. Two-panel coverage figure (one map per product).
+    fig = plot_patch_coverage(
+        patches=patches,
+        site=site,
+        coverage=coverage,
+        product_titles={
+            label: EMIT_PRODUCT_TITLES.get(label, label)
+            for label in EMIT_PRODUCTS
+        },
+        suptitle=(
+            f"{PICS_NAME} — {PATCH_SIZE_KM} km patches by granule count "
+            f"(darker = more)"
+        ),
+    )
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    fig_path = FIG_DIR / f"{tag}_EMITgranule_coverage.png"
+    fig.savefig(fig_path, dpi=1000, bbox_inches="tight")
+    plt.close(fig)
+    print(f"\nCoverage figure:    {fig_path}")
+
+    # 10. Summary.
     print("\n--- Summary ---")
     for label, suffix in [("L1B_RAD", "rad"), ("L2A_RFL", "rfl")]:
         col = f"n_gran_ovlp_{suffix}"
