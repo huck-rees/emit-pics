@@ -20,7 +20,7 @@ from pathlib import Path
 # USER-CONFIGURABLE INPUTS
 # ============================================================
 PICS_NAME     = "Libya 4"       # site_name value in the GeoPackage
-PATCH_SIZE_KM = 40              # patch edge length to analyze (km)
+PATCH_SIZE_KM = 10              # patch edge length to analyze (km)
 DATE_START    = "2022-08-01"
 DATE_END      = "2026-06-30"
 
@@ -219,7 +219,7 @@ def main() -> None:
         ),
     )
     FIG_DIR.mkdir(parents=True, exist_ok=True)
-    fig_path = FIG_DIR / f"{tag}_EMITgranule_coverage.png"
+    fig_path = FIG_DIR / f"{tag}_{PATCH_SIZE_KM}km_EMITgranule_coverage.png"
     fig.savefig(fig_path, dpi=1000, bbox_inches="tight")
     plt.close(fig)
     print(f"\nCoverage figure:    {fig_path}")
