@@ -19,7 +19,7 @@ from pathlib import Path
 # ============================================================
 # USER-CONFIGURABLE INPUTS
 # ============================================================
-PICS_NAME     = "Libya 4"       # site_name value in the GeoPackage
+PICS_NAME     = "Mauritania 2"       # site_name value in the GeoPackage
 PATCH_SIZE_KM = 10              # patch edge length to analyze (km)
 DATE_START    = "2022-08-01"
 DATE_END      = "2026-06-30"

@@ -12,7 +12,7 @@ from pathlib import Path
 # ============================================================
 # USER-CONFIGURABLE INPUTS
 # ============================================================
-PICS_NAME = "Libya 4"       # site_name value in the GeoPackage
+PICS_NAME = "Mauritania 2"       # site_name value in the GeoPackage
 MIN_PATCH_KM = 10           # smallest patch edge length (km)
 INCREMENT_KM = 10           # step between successive patch sizes (km)
 
