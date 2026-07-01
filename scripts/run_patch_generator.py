@@ -12,15 +12,13 @@ from pathlib import Path
 # ============================================================
 # USER-CONFIGURABLE INPUTS
 # ============================================================
-PICS_NAME = "Mauritania 2"       # site_name value in the GeoPackage
+PICS_NAME = "Mauritania 2"       # site id (slug / site_name) in config/sites.yaml
 MIN_PATCH_KM = 10           # smallest patch edge length (km)
 INCREMENT_KM = 10           # step between successive patch sizes (km)
 
-# Paths
-_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../Code/EMIT
-_DATA_ROOT = _REPO_ROOT.parent.parent / "Data"               # .../JPL/Data
-PICS_GPKG = _DATA_ROOT / "ROIs" / "northafrican_pics.gpkg"
-OUT_DIR = _DATA_ROOT / "ROIs" / "patches"
+# Paths (repo-relative — identical on every machine)
+_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
+OUT_DIR = _REPO_ROOT / "data" / "ROIs" / "patches"
 
 # ============================================================
 # Ensure the project root is on sys.path so 'emit_pics' is
@@ -28,18 +26,16 @@ OUT_DIR = _DATA_ROOT / "ROIs" / "patches"
 # ============================================================
 sys.path.insert(0, str(_REPO_ROOT))
 
+from emit_pics.config import pics_geodataframe
 from emit_pics.patch_generator import (
     generate_patches,
-    load_pics,
-    select_site,
     write_outputs,
 )
 
 
 def main() -> None:
-    # 1. Load PICS boundaries and select the requested site.
-    pics_gdf = load_pics(PICS_GPKG)
-    site = select_site(pics_gdf, PICS_NAME)
+    # 1. Build the PICS site rectangle from sites.yaml (EPSG:4326).
+    site = pics_geodataframe(PICS_NAME)
     print(f"Selected site: {PICS_NAME}")
 
     # 2. Reproject to the site's UTM zone; centroid becomes grid anchor.

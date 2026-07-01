@@ -1,59 +1,92 @@
 # Pseudo-Invariant Calibration Sites (PICS) for EMIT temporal stability analysis.
 #
-# Fill in center_lat, center_lon from the primary reference source (e.g.,
-# Cosnefroy et al. 1996, CEOS CalVal portal, or your own GPS survey).
-# roi_size_km defines a square ROI centered on the site.
+# This file is the SINGLE SOURCE OF TRUTH for PICS site geometry. Each site's
+# region of interest is an axis-aligned bounding box in EPSG:4326 (decimal
+# degrees), given by `bbox: {min_lon, min_lat, max_lon, max_lat}`. The pipeline
+# builds the site rectangle directly from those four numbers
+# (`emit_pics.config.pics_polygon`) and can regenerate the companion
+# `northafrican_pics.gpkg` from this file (`scripts/run_export_pics_gpkg.py`),
+# so no external GeoPackage seed is required.
 #
-# Optional fields (add per site as available):
-#   elevation_m    — site elevation in meters above sea level
-#   utm_zone       — UTM zone number (append N or S hemisphere if needed)
-#   cnes_bounds    — CNES core ROI bounding box (ul, ur, ll, lr corners)
+# Values below are the CEOS/CNES reference boxes (source URLs per site).
+# `center_lat/lon`, `altitude_m`, `utm_zone`, `wrs2_path_row`, and
+# `usable_area_km` are carried as metadata; the bbox is what drives the analysis.
 
 sites:
   libya_4:
-    name: "Libya 4"
-    # Source: USGS ECCOE Cal/Val site registry (CEOS/CNES reference).
-    center_lat: 28.55    # decimal degrees N
-    center_lon: 23.39    # decimal degrees E
-    roi_size_km: 10      # square ROI side length — sized for EMIT 60 m pixels
-    elevation_m: 118     # meters above sea level
-    utm_zone: "34N"
-    #
-    # NOTE on center_lon: 23.39 E is the official CEOS/CNES value. An alternate
-    # published value of 23.99 E appears in some references but is an outlier
-    # and should NOT be used.
-    #
-    # NOTE on elevation: 118 m can be cross-checked against EMIT's elevation
-    # layer over the ROI as a location sanity check.
-    #
-    # CNES core ROI bounding box (decimal degrees). The small EMIT ROI must
-    # sit within these bounds, on clean dunes, away from scene edges.
-    cnes_bounds:
-      ul: { lat: 28.65, lon: 23.29 }
-      ur: { lat: 28.65, lon: 23.49 }
-      ll: { lat: 28.45, lon: 23.29 }
-      lr: { lat: 28.45, lon: 23.49 }
+    site_name: "Libya 4"
+    country: "Libya"
+    roi_type: "CEOS"
+    center_lat: 28.55
+    center_lon: 23.39      # official CEOS/CNES value; the 23.99 variant is an outlier — do NOT use
+    wrs2_path_row: "181/40"
+    utm_zone: 34
+    altitude_m: 118        # cross-checkable against EMIT's elevation layer as a location sanity check
+    usable_area_km: "75 x 75"
+    bbox: { min_lon: 22.89, min_lat: 28.05, max_lon: 23.89, max_lat: 29.05 }
+    source: "https://calval.cr.usgs.gov/apps/libya-4"
 
   algeria_3:
-    name: "Algeria 3"
-    center_lat: null   # TODO: fill from primary source
-    center_lon: null   # TODO: fill from primary source
-    roi_size_km: 50
+    site_name: "Algeria 3"
+    country: "Algeria"
+    roi_type: "CEOS"
+    center_lat: 30.32
+    center_lon: 7.66
+    wrs2_path_row: "192/39"
+    utm_zone: 32
+    altitude_m: 245
+    usable_area_km: "110 x 85"
+    bbox: { min_lon: 7.21, min_lat: 29.77, max_lon: 8.11, max_lat: 30.77 }
+    source: "https://calval.cr.usgs.gov/apps/algeria-3"
+
+  algeria_5:
+    site_name: "Algeria 5"
+    country: "Algeria"
+    roi_type: "CEOS"
+    center_lat: 31.02
+    center_lon: 2.23
+    wrs2_path_row: "195/38-39"
+    utm_zone: 31
+    altitude_m: 530
+    usable_area_km: "75 x 75"
+    bbox: { min_lon: 1.78, min_lat: 30.57, max_lon: 2.68, max_lat: 31.47 }
+    source: "https://calval.cr.usgs.gov/apps/algeria-5"
 
   libya_1:
-    name: "Libya 1"
-    center_lat: null   # TODO: fill from primary source
-    center_lon: null   # TODO: fill from primary source
-    roi_size_km: 50
+    site_name: "Libya 1"
+    country: "Libya"
+    roi_type: "CEOS"
+    center_lat: 24.42
+    center_lon: 13.35
+    wrs2_path_row: "187/43"
+    utm_zone: 33
+    altitude_m: 648
+    usable_area_km: "100 x 90"
+    bbox: { min_lon: 12.9, min_lat: 23.97, max_lon: 13.8, max_lat: 24.87 }
+    source: "https://calval.cr.usgs.gov/apps/libya-1"
 
   mauritania_1:
-    name: "Mauritania 1"
-    center_lat: null   # TODO: fill from primary source
-    center_lon: null   # TODO: fill from primary source
-    roi_size_km: 50
+    site_name: "Mauritania 1"
+    country: "Mauritania"
+    roi_type: "CEOS"
+    center_lat: 19.4
+    center_lon: -9.3
+    wrs2_path_row: "201/46-47"
+    utm_zone: 29
+    altitude_m: 392
+    usable_area_km: "50 x 50"
+    bbox: { min_lon: -9.75, min_lat: 18.95, max_lon: -8.85, max_lat: 19.85 }
+    source: "https://calval.cr.usgs.gov/apps/mauritania-1"
 
   mauritania_2:
-    name: "Mauritania 2"
-    center_lat: null   # TODO: fill from primary source
-    center_lon: null   # TODO: fill from primary source
-    roi_size_km: 50
+    site_name: "Mauritania 2"
+    country: "Mauritania"
+    roi_type: "CEOS"
+    center_lat: 20.85
+    center_lon: -8.78
+    wrs2_path_row: "201/46"
+    utm_zone: 29
+    altitude_m: 384
+    usable_area_km: "100 x 90"
+    bbox: { min_lon: -9.23, min_lat: 20.4, max_lon: -8.33, max_lat: 21.3 }
+    source: "https://calval.cr.usgs.gov/apps/mauritania-2"

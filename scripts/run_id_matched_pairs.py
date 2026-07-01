@@ -34,12 +34,13 @@ PATCH_ID = "10_7_1"        # patch_id within the geometry table
 SZA_TOL  = 2.0             # solar-zenith match tolerance (degrees)
 VZA_TOL  = 5.0             # view-zenith match tolerance (degrees)
 
-# Paths (all local; geometry table produced by run_patch_extract.py)
-DATA_ROOT   = Path(r"C:\Users\huckr\Desktop\JPL\Data")
+# Paths (repo-relative; geometry table produced by run_patch_extract.py)
+_REPO_ROOT  = Path(__file__).resolve().parent.parent          # .../emit-pics
+DATA_ROOT   = _REPO_ROOT / "data"
 PATCH_DIR   = DATA_ROOT / "ROIs" / "patches"
 GEOM_DIR    = DATA_ROOT / "geometry"
 MATCHED_DIR = DATA_ROOT / "matched_pairs"
-FIG_DIR     = Path(r"C:\Users\huckr\Desktop\JPL\Figures")
+FIG_DIR     = _REPO_ROOT / "figures"
 
 GEOM_PATH = GEOM_DIR / f"geometry_{PICS_ID}_{PATCH_ID}.csv"
 ATTS_PATH = PATCH_DIR / f"patches_{PICS_ID}_atts.csv"
@@ -48,7 +49,6 @@ ATTS_PATH = PATCH_DIR / f"patches_{PICS_ID}_atts.csv"
 # Ensure the project root is on sys.path so 'emit_pics' is
 # importable when running this script directly.
 # ============================================================
-_REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
 import matplotlib

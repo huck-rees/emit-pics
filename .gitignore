@@ -1,5 +1,10 @@
-# Data and outputs — large files, never commit
-data/
+# Data and figures — generated, large (pixel cubes, PDFs); never commit.
+# The folders themselves are kept in-repo via committed .gitkeep placeholders,
+# so a fresh clone has the expected layout while all contents stay ignored.
+data/*
+!data/.gitkeep
+figures/*
+!figures/.gitkeep
 outputs/
 
 # Credentials

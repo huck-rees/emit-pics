@@ -41,22 +41,21 @@ PREFER_CUBE = True   # render from the cached pixel cube when present (no networ
 DRAW_NADIR  = False  # draw the nadir track? requires a whole-scene VZA read per page
                      # (streaming path only; a cube has no whole-scene VZA)
 
-# Paths (all local; inputs already produced upstream)
-DATA_ROOT = Path(r"C:\Users\huckr\Desktop\JPL\Data")
+# Paths (repo-relative — identical on every machine)
+_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
+DATA_ROOT = _REPO_ROOT / "data"
 PATCH_DIR = DATA_ROOT / "ROIs" / "patches"
 CUBE_DIR  = DATA_ROOT / "pixel_cubes"
-FIG_DIR   = Path(r"C:\Users\huckr\Desktop\JPL\Figures\QC")
+FIG_DIR   = _REPO_ROOT / "figures" / "QC"
 
 DICT_PATH = PATCH_DIR / f"patch_EMIT_dict_{PICS_ID}.csv"
 BNDS_PATH = PATCH_DIR / f"patches_{PICS_ID}_bnds.gpkg"
-PICS_GPKG = DATA_ROOT / "ROIs" / "northafrican_pics.gpkg"
 OUT_PDF   = FIG_DIR / f"{PICS_ID}_{PATCH_ID}_QC_snapshots.pdf"
 
 # ============================================================
 # Ensure the project root is on sys.path so 'emit_pics' is
 # importable when running this script directly.
 # ============================================================
-_REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
 import matplotlib
@@ -80,9 +79,9 @@ from emit_pics.extract_patch_stats import (
     window_bounds,
     with_retry,
 )
+from emit_pics.config import pics_polygon
 from emit_pics.display_qc_bands import (
     granule_footprint_4326,
-    load_pics_polygon,
     open_obs,
     open_rfl_mask,
     render_scene_figure,
@@ -190,7 +189,7 @@ def main() -> None:
 
     # 2. Patch geometry + PICS boundary (both EPSG:4326 for the context panel).
     patch_geom = load_patch_geom_4326(BNDS_PATH, PATCH_ID)
-    pics_poly = load_pics_polygon(PICS_GPKG, PICS_ID)
+    pics_poly = pics_polygon(PICS_ID)
 
     # 3. Render every acquisition into one PDF; bucket outcomes.
     os.makedirs(FIG_DIR, exist_ok=True)

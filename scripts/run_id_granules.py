@@ -19,7 +19,7 @@ from pathlib import Path
 # ============================================================
 # USER-CONFIGURABLE INPUTS
 # ============================================================
-PICS_NAME     = "Mauritania 2"       # site_name value in the GeoPackage
+PICS_NAME     = "Mauritania 2"       # site id (slug / site_name) in config/sites.yaml
 PATCH_SIZE_KM = 10              # patch edge length to analyze (km)
 DATE_START    = "2022-08-01"
 DATE_END      = "2026-06-30"
@@ -35,13 +35,12 @@ EMIT_PRODUCT_TITLES = {
     "L2A_RFL": "L2A Reflectance",
 }
 
-# Paths (relative to the repo root assumed two levels above this file)
-_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../Code/EMIT
-_DATA_ROOT = _REPO_ROOT.parent.parent / "Data"               # .../JPL/Data
-PICS_GPKG  = _DATA_ROOT / "ROIs" / "northafrican_pics.gpkg"
+# Paths (repo-relative — identical on every machine)
+_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
+_DATA_ROOT = _REPO_ROOT / "data"
 PATCH_DIR  = _DATA_ROOT / "ROIs" / "patches"
 OUT_DIR_FP = _DATA_ROOT / "ROIs"                             # footprints output
-FIG_DIR    = Path(r"C:\Users\huckr\Desktop\JPL\Figures")     # coverage figure
+FIG_DIR    = _REPO_ROOT / "figures"                          # coverage figure
 
 # ============================================================
 # Ensure the project root is on sys.path so 'emit_pics' is
@@ -54,8 +53,8 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from emit_pics.config import pics_geodataframe
 from emit_pics.id_granules import (
-    load_pics,
     load_patches,
     search_granules,
     footprints_to_gdf,
@@ -72,8 +71,8 @@ def main() -> None:
     earthaccess.login()
     print("Authenticated to NASA Earthdata.\n")
 
-    # 1. Load PICS site and derive bounding box.
-    site = load_pics(PICS_GPKG, PICS_NAME)
+    # 1. Build PICS site rectangle (from sites.yaml) and derive bounding box.
+    site = pics_geodataframe(PICS_NAME)
     bbox = tuple(site.total_bounds)  # (west, south, east, north) in EPSG:4326
     print(f"Site: {PICS_NAME}")
     print(f"Bounding box: {bbox}\n")
@@ -97,6 +96,7 @@ def main() -> None:
     )
 
     # 3. Write combined footprints GeoPackage.
+    OUT_DIR_FP.mkdir(parents=True, exist_ok=True)
     fp_out = OUT_DIR_FP / f"emit_granule_footprints_{tag}.gpkg"
     footprints.to_file(fp_out, driver="GPKG")
     print(f"\nFootprints GeoPackage: {fp_out}")

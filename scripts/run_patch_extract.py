@@ -51,8 +51,9 @@ MIN_VALID_FRAC  = 0.60      # min in-patch valid fraction (only if filtering)
 RAD_SHORT_NAME = "EMITL1BRAD"   # L1B radiance (+ bundled OBS) collection
 RFL_SHORT_NAME = "EMITL2ARFL"   # L2A reflectance (+ MASK) collection
 
-# Paths (all local; inputs already produced upstream)
-DATA_ROOT = Path(r"C:\Users\huckr\Desktop\JPL\Data")
+# Paths (repo-relative — identical on every machine)
+_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
+DATA_ROOT = _REPO_ROOT / "data"
 PATCH_DIR = DATA_ROOT / "ROIs" / "patches"
 RAD_DIR   = DATA_ROOT / "radiance"
 RFL_DIR   = DATA_ROOT / "reflectance"
@@ -67,7 +68,6 @@ BNDS_PATH = PATCH_DIR / f"patches_{PICS_ID}_bnds.gpkg"
 # Ensure the project root is on sys.path so 'emit_pics' is
 # importable when running this script directly.
 # ============================================================
-_REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
 import earthaccess

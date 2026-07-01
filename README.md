@@ -6,15 +6,25 @@ Assessing the radiometric temporal stability of NASA's EMIT imaging spectrometer
 
 ```
 emit_pics/      Python package — pure function libraries (no side effects on import)
-config/         YAML site definitions (PICS coordinates, ROI parameters)
+config/         sites.yaml — PICS site definitions (bounding boxes + metadata)
 scripts/        Command-line entry points (edit the inputs at the top, then run)
+data/           Pipeline inputs/outputs (contents gitignored; folder kept via .gitkeep)
+figures/        Generated figures (contents gitignored; folder kept via .gitkeep)
 notebooks/      Exploration and analysis notebooks
 tests/          Unit tests
 ```
 
-Pipeline outputs (patches, footprints, dictionaries, per-channel stats, geometry
-tables, pixel cubes, figures) are written under a sibling `Data/` tree and are
-gitignored.
+All paths are **repo-relative**: every script writes under `data/` and
+`figures/` inside the repo, so it runs identically on any machine straight
+after a `git clone` — no per-machine path edits. The *contents* of `data/` and
+`figures/` (patches, footprints, dictionaries, per-channel stats, geometry
+tables, pixel cubes, figures) are gitignored; only `.gitkeep` placeholders are
+committed so the folders exist on a fresh clone.
+
+`config/sites.yaml` is the **single source of truth** for PICS site geometry —
+each site is an axis-aligned bounding box in EPSG:4326. Nothing external needs
+to be copied to run the pipeline; the site rectangle is built from the YAML, and
+the companion `northafrican_pics.gpkg` (for GIS use) can be regenerated from it.
 
 ## Package modules
 
@@ -26,7 +36,7 @@ gitignored.
 | `extract_patch_stats` | Low-level openers / windowing / per-channel statistics (shared helpers). |
 | `id_matched_pairs` | Matched-pair detection and SZA/VZA-over-time plotting (pure). |
 | `display_qc_bands` | Per-scene QA/QC multipanel figure rendering. |
-| `config` | Load PICS site definitions from `config/sites.yaml`. |
+| `config` | PICS site geometry from `config/sites.yaml` — `pics_polygon` / `pics_geodataframe` build the ROI rectangle; `write_pics_gpkg` regenerates the GeoPackage. |
 
 The libraries are side-effect-free; each is driven by a thin runner in
 `scripts/` that handles authentication, file I/O, and figure/CSV output.
@@ -42,6 +52,11 @@ You also need NASA Earthdata credentials. The streaming scripts authenticate via
 `earthaccess.login()`, which looks for credentials in `~/.netrc` (or `_netrc` on
 Windows) and falls back to an interactive prompt. See the
 [earthaccess docs](https://earthaccess.readthedocs.io/) for details.
+
+That is the *only* per-machine setup. Because paths are repo-relative and site
+geometry lives in `config/sites.yaml`, a fresh clone is ready to run once the
+conda env exists and Earthdata credentials are in place — no data files or path
+edits to copy over.
 
 ## Pipeline
 
@@ -77,6 +92,11 @@ Then, for a chosen patch:
 
 Step 4 requires step 3 to have run first for that patch (it reads the geometry
 table). Steps 3–5 are otherwise independent.
+
+**Optional:** `python scripts/run_export_pics_gpkg.py` regenerates
+`data/ROIs/northafrican_pics.gpkg` from `config/sites.yaml` for viewing the
+site boxes in QGIS. It is a *derived* output (gitignored), never a pipeline
+input — the scripts read the geometry straight from the YAML.
 
 ## Pixel-cube cache
 
