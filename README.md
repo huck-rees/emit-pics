@@ -61,7 +61,7 @@ edits to copy over.
 ## Pipeline
 
 Each script exposes its inputs (site id, patch id, paths) as constants at the
-top — edit those, then run. Steps 1–2 are global to a PICS site; steps 3–5 are
+top — edit those, then run. Steps 1–2 are global to a PICS site; steps 3–6 are
 per-patch analyses that all branch off the patch–granule dictionary.
 
 1. **`python scripts/run_patch_generator.py`**
@@ -82,16 +82,34 @@ Then, for a chosen patch:
    the raw in-patch **pixel cube** (NetCDF). Optional Aggregate-Flag screening of
    the per-channel stats.
 
-4. **`python scripts/run_id_matched_pairs.py`**
-   Pure **local** post-processor (no Earthdata): reads the geometry table from
-   step 3 and writes the matched-pair CSV and the SZA/VZA-over-time figure.
-
-5. **`python scripts/run_display_qc_bands.py`**
+4. **`python scripts/run_display_qc_bands.py`**
    Per-scene QA/QC snapshot PDF (RGB, every MASK band, SZA/VZA, footprint
-   context) for one patch.
+   context) for one patch, **and** it creates/refreshes the patch's **QC
+   worksheet** `data/qc/{site}_{patch}_qc.csv` (one row per scene).
 
-Step 4 requires step 3 to have run first for that patch (it reads the geometry
-table). Steps 3–5 are otherwise independent.
+   *→ Manual step:* open the PDF, and in the worksheet set `keep=FALSE` (with a
+   `reason`: cloud / coverage / artifact / other) for any bad scene, then set
+   `reviewed=TRUE` in the top row. Verdicts are **opt-out** (default keep) and
+   preserved across re-runs.
+
+5. **`python scripts/run_id_matched_pairs.py`**
+   Pure **local** post-processor (no Earthdata): reads the geometry table,
+   **applies the QC gate** (drops `keep=FALSE` scenes; refuses to run until the
+   worksheet is `reviewed=TRUE`, unless `REQUIRE_QC_REVIEW=False`), then writes
+   the matched-pair CSV and the SZA/VZA-over-time figure.
+
+6. **`python scripts/run_delta_calculations.py`**
+   Pure **local** post-processor (no Earthdata): joins the matched-pairs CSV
+   (step 5) with the per-channel RAD/RFL stats (step 3) and writes a tidy long
+   CSV of the pairwise **t1→t2** percent change in reflectance and radiance
+   (median & mean) at every wavelength — one row per `(matched pair × wavelength)`
+   → `data/delta_r/{site}_{patch}_delta.csv`. No aggregation or figures; the
+   cross-PICS analysis is a separate future step.
+
+Because the QC gate is enforced in step 5, run **step 4 before step 5** and do
+the manual inspection in between; QC exclusions then propagate automatically to
+step 6 (which only sees surviving matched pairs). Step 5 requires step 3 (the
+geometry table); step 6 requires steps 3 and 5.
 
 **Optional:** `python scripts/run_export_pics_gpkg.py` regenerates
 `data/ROIs/northafrican_pics.gpkg` from `config/sites.yaml` for viewing the

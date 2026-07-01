@@ -34,15 +34,20 @@ PATCH_ID = "10_7_1"        # patch_id within the geometry table
 SZA_TOL  = 2.0             # solar-zenith match tolerance (degrees)
 VZA_TOL  = 5.0             # view-zenith match tolerance (degrees)
 
+REQUIRE_QC_REVIEW = True   # require a reviewed QC worksheet before proceeding;
+                           # set False to bypass the manual QC gate entirely
+
 # Paths (repo-relative; geometry table produced by run_patch_extract.py)
 _REPO_ROOT  = Path(__file__).resolve().parent.parent          # .../emit-pics
 DATA_ROOT   = _REPO_ROOT / "data"
 PATCH_DIR   = DATA_ROOT / "ROIs" / "patches"
 GEOM_DIR    = DATA_ROOT / "geometry"
 MATCHED_DIR = DATA_ROOT / "matched_pairs"
+QC_DIR      = DATA_ROOT / "qc"
 FIG_DIR     = _REPO_ROOT / "figures"
 
 GEOM_PATH = GEOM_DIR / f"geometry_{PICS_ID}_{PATCH_ID}.csv"
+QC_PATH   = QC_DIR / f"{PICS_ID}_{PATCH_ID}_qc.csv"
 ATTS_PATH = PATCH_DIR / f"patches_{PICS_ID}_atts.csv"
 
 # ============================================================
@@ -61,6 +66,7 @@ from emit_pics.id_matched_pairs import (
     plot_matched_pairs,
     sniff_delimiter,
 )
+from emit_pics.qc_gate import QCReviewRequired, apply_qc_filter
 
 
 def load_scenes(geom_path: Path) -> pd.DataFrame:
@@ -81,8 +87,23 @@ def main() -> None:
     # 1. Load the cached per-scene geometry (no network).
     scenes = load_scenes(GEOM_PATH)
     print(f"Patch {PATCH_ID}: {len(scenes)} scene(s) from {GEOM_PATH.name}")
+
+    # 1b. Manual QC gate — drop scenes marked keep=FALSE in the reviewed
+    #     worksheet (created/refreshed by run_display_qc_bands.py).
+    try:
+        scenes, qc = apply_qc_filter(scenes, QC_PATH,
+                                     require_review=REQUIRE_QC_REVIEW)
+    except QCReviewRequired as exc:
+        print(f"\nQC gate blocked: {exc}")
+        sys.exit(1)
+    if qc["n_excluded"]:
+        print(f"QC gate: excluded {qc['n_excluded']} scene(s) "
+              f"({qc['reasons']}); {qc['n_after']} remain.")
+    else:
+        print("QC gate: no scenes excluded.")
+
     if len(scenes) < 2:
-        print("Fewer than two scenes; no pairs to form. Exiting.")
+        print("Fewer than two scenes after QC; no pairs to form. Exiting.")
         sys.exit(1)
 
     # 2. Matched pairs (geometry-based; identical for both products).

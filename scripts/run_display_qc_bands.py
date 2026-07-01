@@ -46,10 +46,15 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
 DATA_ROOT = _REPO_ROOT / "data"
 PATCH_DIR = DATA_ROOT / "ROIs" / "patches"
 CUBE_DIR  = DATA_ROOT / "pixel_cubes"
+GEOM_DIR  = DATA_ROOT / "geometry"
+MASK_DIR  = DATA_ROOT / "mask_summary"
+QC_DIR    = DATA_ROOT / "qc"
 FIG_DIR   = _REPO_ROOT / "figures" / "QC"
 
 DICT_PATH = PATCH_DIR / f"patch_EMIT_dict_{PICS_ID}.csv"
 BNDS_PATH = PATCH_DIR / f"patches_{PICS_ID}_bnds.gpkg"
+GEOM_PATH = GEOM_DIR / f"geometry_{PICS_ID}_{PATCH_ID}.csv"
+QC_PATH   = QC_DIR / f"{PICS_ID}_{PATCH_ID}_qc.csv"
 OUT_PDF   = FIG_DIR / f"{PICS_ID}_{PATCH_ID}_QC_snapshots.pdf"
 
 # ============================================================
@@ -87,6 +92,7 @@ from emit_pics.display_qc_bands import (
     render_scene_figure,
 )
 from emit_pics.patch_extract import cube_to_render_inputs, read_cube_netcdf
+from emit_pics.qc_gate import QC_REASONS, build_qc_sheet
 
 
 def render_from_cube(cube_path, dt, patch_geom, pics_poly, pdf) -> str:
@@ -224,6 +230,24 @@ def main() -> None:
         print(f"  WARNING: {len(errored)} acquisition(s) dropped by errors "
               f"after retries -- PDF is INCOMPLETE; consider re-running: "
               f"{errored}")
+
+    # 5. Create/refresh the QC worksheet (co-located with inspection).
+    #    Non-destructive: prior verdicts are preserved; new scenes append as
+    #    keep=TRUE and reset the patch-level reviewed flag.
+    if GEOM_PATH.exists():
+        sheet, new_ts = build_qc_sheet(
+            GEOM_PATH, QC_PATH, mask_dir=MASK_DIR,
+            pics_id=PICS_ID, patch_id=PATCH_ID,
+        )
+        print(f"\nQC worksheet:       {QC_PATH}  ({len(sheet)} scene(s)"
+              f"{f', {len(new_ts)} new' if new_ts else ''})")
+        print("  -> Inspect the PDF above, set keep=FALSE (with a reason: "
+              f"{'/'.join(QC_REASONS)}) for bad scenes,")
+        print("     then set reviewed=TRUE in the top row. Downstream steps "
+              "honor these exclusions.")
+    else:
+        print(f"\nNo geometry table ({GEOM_PATH.name}); QC worksheet not "
+              "generated. Run run_patch_extract.py first.")
 
 
 if __name__ == "__main__":
