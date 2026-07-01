@@ -39,6 +39,7 @@ AGG_FLAG_LABEL = "Aggregate Flag"
 RFL_TOKEN  = "_RFL_"    # L2A reflectance (excludes _RFLUNCERT_)
 RAD_TOKEN  = "_RAD_"    # L1B radiance (excludes _OBS_, _GLT_)
 MASK_TOKEN = "MASK"     # L2A mask
+OBS_TOKEN  = "_OBS_"    # L1B observation geometry (bundled in the RAD granule)
 
 #: Output column order per product (central_wl first, no channel index).
 _STAT_KEYS = ["min", "1qt", "median", "3qt", "max", "mean", "std"]

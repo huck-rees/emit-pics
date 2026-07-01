@@ -118,20 +118,15 @@ def main() -> None:
         else:
             coverage[label] = patches_covered_by_granule(patches, fp_product)
 
-    # 6. Compute overlap counts and dense ranks (per-size).
-    #    Counts/ranks use pandas' nullable Int64 so rows for sizes not yet
-    #    processed can hold <NA> while these columns stay integer-typed.
+    # 6. Compute per-product overlap counts (per-size).
+    #    Counts use pandas' nullable Int64 so rows for sizes not yet processed
+    #    can hold <NA> while these columns stay integer-typed.
     patch_ids = patches["patch_id"].tolist()
     stats = pd.DataFrame({"patch_id": patch_ids})
 
     for label, suffix in [("L1B_RAD", "rad"), ("L2A_RFL", "rfl")]:
         counts = [len(coverage[label].get(pid, [])) for pid in patch_ids]
         stats[f"n_gran_ovlp_{suffix}"] = pd.array(counts, dtype="Int64")
-        stats[f"n_rank_{suffix}"] = (
-            stats[f"n_gran_ovlp_{suffix}"]
-            .rank(method="dense", ascending=False)
-            .astype("Int64")
-        )
 
     # 7. Amend existing GeoPackage and CSV — ROW-scoped to PATCH_SIZE_KM.
     #    Coverage columns are updated only for the current size's patch_ids;
@@ -220,7 +215,7 @@ def main() -> None:
     )
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     fig_path = FIG_DIR / f"{tag}_{PATCH_SIZE_KM}km_EMITgranule_coverage.png"
-    fig.savefig(fig_path, dpi=1000, bbox_inches="tight")
+    fig.savefig(fig_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     print(f"\nCoverage figure:    {fig_path}")
 
