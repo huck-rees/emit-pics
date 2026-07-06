@@ -35,7 +35,7 @@ DELTA_CSV_COLS = [
     "PICS_ID", "patch_id", "pair_id",
     "t1_scene_id", "t2_scene_id", "t1_dt", "t2_dt", "dt_days",
     "delta_SZA", "delta_VZA",
-    "wavelength",
+    "wavelength", "wavelength_t2",
     "rfl_t1_median", "rfl_t2_median", "rfl_t1_mean", "rfl_t2_mean",
     "delta_rfl_pct_median", "delta_rfl_pct_mean",
     "rad_t1_median", "rad_t2_median", "rad_t1_mean", "rad_t2_mean",
@@ -229,9 +229,11 @@ def compute_pair_delta(t1_spec: pd.DataFrame, t2_spec: pd.DataFrame,
         Per-scene spectra from :func:`load_scene_spectrum` (earlier scene is
         *t1*). Aligned by **band order** (band *i* <-> band *i*), NOT by matching
         wavelengths — EMIT scenes share one 285-band grid whose labels drift only
-        slightly between calibration eras; the reported ``wavelength`` is *t1*'s
-        grid. Returns an empty frame if the grids don't correspond (unequal band
-        count, or a per-band gap beyond :data:`WL_MATCH_TOL_NM`).
+        slightly between calibration eras. ``wavelength`` reports *t1*'s grid (the
+        canonical value) and ``wavelength_t2`` reports *t2*'s label for the same
+        band, so the alignment is self-checking by eye. Returns an empty frame if
+        the grids don't correspond (unequal band count, or a per-band gap beyond
+        :data:`WL_MATCH_TOL_NM`).
     meta : dict
         Scalar pair metadata broadcast onto every row: ``PICS_ID``,
         ``patch_id``, ``pair_id``, ``t1_scene_id``, ``t2_scene_id``, ``t1_dt``,
@@ -258,7 +260,8 @@ def compute_pair_delta(t1_spec: pd.DataFrame, t2_spec: pd.DataFrame,
     if a.empty or len(a) != len(b):
         return _empty_delta()
     wl = a["central_wl"].to_numpy()
-    if np.nanmax(np.abs(wl - b["central_wl"].to_numpy())) > WL_MATCH_TOL_NM:
+    wl_t2 = b["central_wl"].to_numpy()          # t2's label for the same band (QC)
+    if np.nanmax(np.abs(wl - wl_t2)) > WL_MATCH_TOL_NM:
         return _empty_delta()
 
     m = pd.concat(
@@ -279,6 +282,7 @@ def compute_pair_delta(t1_spec: pd.DataFrame, t2_spec: pd.DataFrame,
         "delta_SZA": meta["delta_SZA"],
         "delta_VZA": meta["delta_VZA"],
         "wavelength": wl,
+        "wavelength_t2": wl_t2,
         "rfl_t1_median": m["median_rfl_t1"].to_numpy(),
         "rfl_t2_median": m["median_rfl_t2"].to_numpy(),
         "rfl_t1_mean": m["mean_rfl_t1"].to_numpy(),
