@@ -134,7 +134,11 @@ Then, once step 6 has run for the patches you care about (across sites):
    `figures/matched_pairs/{size}_drift_spectrum.png` (drift rate vs wavelength,
    95% CI whiskers, BH-significance colouring), and — one per channel —
    `figures/matched_pairs/individual_channels/{size}_{wavelength}.png` (two-panel
-   ΔR-vs-Δt scatter, RAD | RFL; colour/shape = PICS, marker size ∝ mean |SZA|).
+   ΔR-vs-Δt scatter, RAD | RFL; colour/shape = PICS, marker size ∝ mean |SZA|,
+   each panel overlaid with its Theil–Sen fit line + a stats box).
+   **Water-vapor absorption bands are excluded from both products** (reflectance
+   is fill there, radiance is atmospherically contaminated) — they appear as
+   shaded gaps in the spectrum and are skipped in the per-channel figures.
    Requires the step-6 delta CSVs to carry the `SZA_t1`/`SZA_t2`/`band_index`
    columns (re-run step 6 if they predate that schema).
 

@@ -62,6 +62,7 @@ _PRODUCT_LABEL = {"rad": "Radiance (L1B)", "rfl": "Reflectance (L2A)"}
 _REQUIRED_COLS = {
     "PICS_ID", "patch_id", "pair_id", "dt_days", "band_index", "wavelength",
     "SZA_t1", "SZA_t2", "delta_rad_pct_median", "delta_rfl_pct_median",
+    "absorption_band_flag",
 }
 
 #: Fixed SZA -> marker-size mapping so point sizes are comparable across figures.
@@ -85,6 +86,24 @@ def patch_size_of(patch_id) -> str:
 def sza_marker_size(sza):
     """Map (absolute) SZA in degrees to a marker area — larger SZA, larger point."""
     return np.interp(np.asarray(sza, dtype=float), _SZA_RANGE, _SIZE_RANGE)
+
+
+def _truthy_any(series) -> bool:
+    """True if any cell of *series* reads truthy (bool True or 'True'/'1' text)."""
+    return bool(series.astype(str).str.strip().str.lower().isin(["true", "1"]).any())
+
+
+def absorption_band_indices(df):
+    """Sorted ``band_index`` values flagged as water-vapor absorption bands.
+
+    These are excluded from the drift analysis for **both** products: reflectance
+    is fill (NaN) there, and radiance, though numerically present, is
+    atmospherically contaminated and not a usable drift signal.
+    """
+    if "absorption_band_flag" not in df:
+        return []
+    return sorted(int(b) for b, g in df.groupby("band_index")
+                  if _truthy_any(g["absorption_band_flag"]))
 
 
 # ============================================================
@@ -170,6 +189,13 @@ def benjamini_hochberg(pvals, alpha=DEFAULT_ALPHA):
     return reject, q
 
 
+def _nan_stats(n=0):
+    """A drift-stat dict with NaN estimates (unfittable / excluded channel)."""
+    return {"n": int(n), "slope_pct_yr": np.nan, "ci_low_pct_yr": np.nan,
+            "ci_high_pct_yr": np.nan, "intercept_pct": np.nan,
+            "kendall_tau": np.nan, "p_value": np.nan}
+
+
 def fit_channel_drift(dt_days, dR_pct):
     """Robust drift fit for one channel: ΔR (%) vs Δt (days).
 
@@ -181,9 +207,7 @@ def fit_channel_drift(dt_days, dR_pct):
     y = np.asarray(dR_pct, dtype=float)
     ok = np.isfinite(x) & np.isfinite(y)
     x, y = x[ok], y[ok]
-    out = {"n": int(x.size), "slope_pct_yr": np.nan, "ci_low_pct_yr": np.nan,
-           "ci_high_pct_yr": np.nan, "intercept_pct": np.nan,
-           "kendall_tau": np.nan, "p_value": np.nan}
+    out = _nan_stats(x.size)
     if x.size < MIN_PAIRS or np.ptp(x) == 0:
         return out
     slope, intercept, lo, hi = theilslopes(y, x)      # per-day
@@ -199,16 +223,22 @@ def compute_drift_spectrum(df, product, *, alpha=DEFAULT_ALPHA):
     """Per-channel drift fit across all bands for one product.
 
     Returns a DataFrame (one row per ``band_index``, sorted) with the fit stats,
-    a representative ``wavelength`` (median across pairs), ``raw_significant``
+    a representative ``wavelength`` (median across pairs), an ``absorption_band``
+    flag (water-vapor bands, excluded -> NaN stats), ``raw_significant``
     (p<=alpha), and BH results (``bh_qvalue``, ``bh_significant``).
     """
     dcol = _DELTA_COL[product]
     rows = []
     for bidx, g in df.groupby("band_index"):
-        fit = fit_channel_drift(g["dt_days"], g[dcol])
+        is_abs = _truthy_any(g["absorption_band_flag"])
+        # Water-vapor absorption bands are excluded from BOTH products: reflectance
+        # is fill (NaN) there, and radiance is atmospherically contaminated — not a
+        # usable drift signal. They become gaps in the spectrum.
+        fit = (_nan_stats(len(g)) if is_abs
+               else fit_channel_drift(g["dt_days"], g[dcol]))
         rows.append({"band_index": int(bidx),
                      "wavelength": float(np.nanmedian(g["wavelength"])),
-                     **fit})
+                     "absorption_band": is_abs, **fit})
     spec = pd.DataFrame(rows).sort_values("band_index").reset_index(drop=True)
     reject, q = benjamini_hochberg(spec["p_value"].to_numpy(), alpha)
     spec["raw_significant"] = spec["p_value"] <= alpha
@@ -236,14 +266,57 @@ def _channel_legend(ax, sub):
     ax.legend(handles=handles, fontsize=8, loc="best", framealpha=0.9)
 
 
-def plot_channel_scatter(df, band_index, *, stat_label="median"):
+def _lookup_stats(spectra, product, band_index):
+    """Fetch a channel's precomputed drift stats from a spectrum, or None."""
+    if not spectra or product not in spectra:
+        return None
+    spec = spectra[product]
+    row = spec[spec["band_index"] == band_index]
+    return None if row.empty else row.iloc[0].to_dict()
+
+
+def _draw_fit(ax, stats, x):
+    """Overlay the Theil–Sen regression line + a stats box on one panel.
+
+    *stats* is a fit dict (from :func:`fit_channel_drift` or a spectrum row);
+    *x* is the channel's Δt values (to bound the line). Draws nothing but the
+    n-annotation when the channel is unfit (NaN slope).
+    """
+    n = int(stats.get("n", 0) or 0)
+    slope = stats.get("slope_pct_yr", np.nan)
+    x = np.asarray(x, dtype=float)
+    if x.size and np.isfinite(slope):
+        xr = np.array([np.nanmin(x), np.nanmax(x)])
+        yline = stats["intercept_pct"] + (slope / DAYS_PER_YEAR) * xr
+        ax.plot(xr, yline, color="k", lw=1.6, zorder=5)
+        txt = (f"drift = {slope:+.3f} %/yr\n"
+               f"95% CI [{stats['ci_low_pct_yr']:+.2f}, {stats['ci_high_pct_yr']:+.2f}]\n"
+               f"intercept = {stats['intercept_pct']:+.2f} %\n"
+               f"Kendall p = {stats['p_value']:.2g}   n = {n}")
+        if pd.notna(stats.get("bh_significant", np.nan)):
+            txt += "\n" + ("BH-significant" if bool(stats["bh_significant"])
+                           else "not BH-significant")
+    else:
+        txt = f"no drift fit (n = {n})"
+    ax.text(0.03, 0.97, txt, transform=ax.transAxes, va="top", ha="left",
+            fontsize=8, family="monospace",
+            bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.85))
+
+
+def plot_channel_scatter(df, band_index, *, spectra=None, stat_label="median"):
     """Two-panel ΔR-vs-Δt scatter for one channel: RAD (left), RFL (right).
 
     Points are coloured + shaped by PICS and sized by ``mean(|SZA_t1|,|SZA_t2|)``.
-    Returns ``(fig, wavelength)`` or ``(None, None)`` if the channel has no rows.
+    Each panel overlays its Theil–Sen regression line and a stats box (drift
+    rate, 95% CI, intercept, Kendall p, n, BH-significance). Stats come from
+    *spectra* (``{"rad": spec_rad, "rfl": spec_rfl}``) when given — the same
+    values as the drift spectrum — otherwise they are fit on the fly.
+
+    Returns ``(fig, wavelength)``, or ``(None, None)`` if the channel has no rows
+    or is a water-vapor absorption band (excluded from the analysis).
     """
     sub = df[df["band_index"] == band_index]
-    if sub.empty:
+    if sub.empty or _truthy_any(sub["absorption_band_flag"]):
         return None, None
     wl = float(np.nanmedian(sub["wavelength"]))
     fig, axes = plt.subplots(1, 2, figsize=(13, 5.5), sharex=True)
@@ -257,41 +330,72 @@ def plot_channel_scatter(df, band_index, *, stat_label="median"):
         ax.axhline(0.0, color="gray", lw=0.8, ls="--")
         ax.set_xlabel("Δt — days between pair")
         ax.set_title(_PRODUCT_LABEL[product])
+        stats = _lookup_stats(spectra, product, band_index)
+        if stats is None:
+            stats = fit_channel_drift(sub["dt_days"], sub[dcol])
+        _draw_fit(ax, stats, sub["dt_days"].to_numpy())
     axes[0].set_ylabel(f"ΔR — % change ({stat_label})")
     _channel_legend(axes[1], sub)
     fig.suptitle(f"Channel {int(band_index)} — {wl:.1f} nm    "
-                 f"(colour/shape = PICS, marker size ∝ mean |SZA|)")
+                 f"(colour/shape = PICS, marker size ∝ mean |SZA|; black line = "
+                 f"Theil–Sen fit)")
     fig.tight_layout()
     return fig, wl
+
+
+def _absorption_spans(spec):
+    """Contiguous (wl_lo, wl_hi) wavelength ranges flagged as absorption bands."""
+    if "absorption_band" not in spec:
+        return []
+    s = spec.sort_values("band_index")
+    spans, run = [], []
+    for _, r in s.iterrows():
+        if bool(r["absorption_band"]):
+            run.append(float(r["wavelength"]))
+        elif run:
+            spans.append((min(run), max(run)))
+            run = []
+    if run:
+        spans.append((min(run), max(run)))
+    return spans
 
 
 def plot_drift_spectrum(spec_rad, spec_rfl, *, patch_size, alpha=DEFAULT_ALPHA):
     """Two-panel drift spectrum: drift rate (%/yr) vs wavelength, RAD then RFL.
 
     Per-channel 95% CI whiskers; BH-significant channels filled/red, the rest
-    hollow/grey. Returns the figure.
+    hollow/grey. Water-vapor absorption windows (excluded from the analysis) are
+    shaded. Returns the figure.
     """
-    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8.5), sharex=True)
+    spans = _absorption_spans(spec_rad)
     for ax, spec, product in zip(axes, (spec_rad, spec_rfl), ("rad", "rfl")):
+        for i, (lo, hi) in enumerate(spans):
+            ax.axvspan(lo, hi, color="0.9", zorder=0,
+                       label="water-vapor band (excluded)" if i == 0 else None)
         s = spec.dropna(subset=["slope_pct_yr"])
         wl = s["wavelength"].to_numpy()
         y = s["slope_pct_yr"].to_numpy()
         lo = s["ci_low_pct_yr"].to_numpy()
         hi = s["ci_high_pct_yr"].to_numpy()
         sig = s["bh_significant"].to_numpy(dtype=bool)
-        ax.errorbar(wl, y, yerr=[y - lo, hi - y], fmt="none", ecolor="lightgray",
-                    elinewidth=0.8, zorder=1)
+        # Whiskers = 95% CI on the slope; each marker = that channel's Theil–Sen
+        # drift rate (filled/red if BH-significant, hollow/grey otherwise).
+        ax.errorbar(wl, y, yerr=[y - lo, hi - y], fmt="none", ecolor="darkgray",
+                    elinewidth=0.8, capsize=2, zorder=1, label="95% CI")
         ax.scatter(wl[~sig], y[~sig], s=14, facecolors="none",
                    edgecolors="tab:gray", linewidths=0.6, zorder=2,
-                   label="not significant")
+                   label="drift rate — not significant")
         ax.scatter(wl[sig], y[sig], s=20, c="tab:red", zorder=3,
-                   label=f"BH-significant (FDR < {alpha})")
+                   label=f"drift rate — BH-significant (FDR < {alpha})")
         ax.axhline(0.0, color="k", lw=0.8)
         ax.set_ylabel(f"{_PRODUCT_LABEL[product]}\ndrift (%/yr)")
+        ax.set_xlabel("Wavelength (nm)")     # x-axis on BOTH panels
+        ax.tick_params(labelbottom=True)     # re-enable top panel's tick labels
         ax.legend(fontsize=8, loc="best", framealpha=0.9)
-    axes[-1].set_xlabel("Wavelength (nm)")
     n_ch = int(spec_rad["slope_pct_yr"].notna().sum())
-    fig.suptitle(f"Radiometric drift spectrum — {patch_size} km patches "
-                 f"(Theil–Sen slope of ΔR vs Δt; {n_ch} channels fit)")
+    fig.suptitle(f"Radiometric drift spectrum — {patch_size} km patches   "
+                 f"(marker = per-channel Theil–Sen drift rate, whisker = 95% CI; "
+                 f"{n_ch} channels fit)")
     fig.tight_layout()
     return fig

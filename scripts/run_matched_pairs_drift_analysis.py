@@ -55,6 +55,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from emit_pics.matched_pairs_drift_analysis import (
+    absorption_band_indices,
     compute_drift_spectrum,
     load_delta_tables,
     plot_channel_scatter,
@@ -104,12 +105,17 @@ def main() -> None:
     # 4. Optional per-channel two-panel scatter plots.
     if INDIVIDUAL_CHANNELS:
         CHAN_DIR.mkdir(parents=True, exist_ok=True)
-        bands = (sorted(df["band_index"].unique()) if ONLY_BANDS is None
-                 else list(ONLY_BANDS))
-        print(f"\nRendering {len(bands)} per-channel figure(s) -> {CHAN_DIR}")
+        all_bands = (sorted(df["band_index"].unique()) if ONLY_BANDS is None
+                     else list(ONLY_BANDS))
+        abs_bands = set(absorption_band_indices(df))
+        bands = [b for b in all_bands if b not in abs_bands]
+        spectra = {"rad": spec_rad, "rfl": spec_rfl}
+        print(f"\nRendering {len(bands)} per-channel figure(s) "
+              f"({len(abs_bands)} water-vapor absorption channel(s) excluded) "
+              f"-> {CHAN_DIR}")
         n_written = 0
         for k, bidx in enumerate(bands, 1):
-            fig, wl = plot_channel_scatter(df, bidx)
+            fig, wl = plot_channel_scatter(df, bidx, spectra=spectra)
             if fig is None:
                 continue
             path = CHAN_DIR / f"{PATCH_SIZE}_{wl:04.0f}.png"
