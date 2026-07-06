@@ -106,6 +106,15 @@ Then, for a chosen patch:
    → `data/delta_r/{site}_{patch}_delta.csv`. No aggregation or figures; the
    cross-PICS analysis is a separate future step.
 
+   The two scenes are aligned **by band order** (band *i* ↔ band *i*), not by
+   exact wavelength — EMIT recalibrated its wavelengths mid-record (~0.088 nm
+   shift between processing eras), so an exact match would silently drop
+   cross-era pairs. `absorption_band_flag` marks the deep water-vapor bands,
+   derived from where L2A reflectance is fill (so it flags radiance rows there
+   too). Any pair that can't be formed is reported **loudly** and the run exits
+   non-zero: *skipped* (a scene's radiance stats are missing — re-run step 3) or
+   *degenerate* (the two scenes' band grids don't correspond).
+
 Because the QC gate is enforced in step 5, run **step 4 before step 5** and do
 the manual inspection in between; QC exclusions then propagate automatically to
 step 6 (which only sees surviving matched pairs). Step 5 requires step 3 (the

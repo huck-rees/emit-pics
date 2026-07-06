@@ -44,15 +44,20 @@ OUT_PATH     = OUT_DIR / f"{PICS_ID}_{PATCH_ID}_delta.csv"
 # ============================================================
 sys.path.insert(0, str(_REPO_ROOT))
 
+import numpy as np
 import pandas as pd
 
 from emit_pics.delta_calculations import (
     DELTA_CSV_COLS,
+    WL_MATCH_TOL_NM,
+    absorption_band_wavelengths,
     compute_pair_delta,
     load_matched_pairs,
     load_scene_spectrum,
     pair_metadata,
+    scene_perchannel_path,
 )
+from emit_pics.id_matched_pairs import acq_timestamp
 
 
 def main() -> None:
@@ -68,43 +73,106 @@ def main() -> None:
         print("No matched pairs to process. Exiting.")
         sys.exit(1)
 
-    # 2. Per pair: load both scenes' spectra and compute per-wavelength deltas.
-    #    A pair is skipped only if a scene's RADIANCE per-channel CSV is absent
-    #    (radiance anchors the join); missing reflectance just yields NaN RFL
-    #    deltas for that pair.
-    frames, skipped = [], []
+    # 2. Load each referenced scene's spectrum ONCE (a scene may appear in many
+    #    pairs). Radiance anchors the join, so a scene with no radiance CSV is
+    #    unusable; record the exact missing file for the failure summary.
+    scene_ids = pd.unique(pairs[["t1_scene_id", "t2_scene_id"]].values.ravel())
+    specs, missing_rad = {}, {}
+    for sid in scene_ids:
+        spec = load_scene_spectrum(sid, PICS_ID, PATCH_ID, RFL_DIR, RAD_DIR)
+        specs[sid] = spec
+        if spec is None:
+            missing_rad[sid] = scene_perchannel_path(sid, PICS_ID, PATCH_ID,
+                                                     RAD_DIR, "rad")
+
+    # 3. Derive the water-vapor bad-band wavelengths ONCE from the first
+    #    reflectance-bearing scene (a fixed instrument property, identical across
+    #    scenes). Flagging by wavelength means radiance rows are flagged too. If
+    #    no scene has reflectance, absorption_band_flag falls back to the fixed
+    #    ABSORPTION_BANDS_NM ranges.
+    bad_bands = np.array([], dtype=float)
+    for sid, spec in specs.items():
+        wls = absorption_band_wavelengths(spec)
+        if len(wls):
+            bad_bands = wls
+            print(f"Absorption bands: {len(wls)} water-vapor band(s) derived from "
+                  f"reflectance of scene {acq_timestamp(sid)} "
+                  f"(~{wls.min():.0f}-{wls.max():.0f} nm).")
+            break
+    if not len(bad_bands):
+        print("Absorption bands: no reflectance-bearing scene found; flag falls "
+              "back to the fixed ABSORPTION_BANDS_NM ranges.")
+
+    # 4. Per pair: compute per-wavelength deltas. A pair can drop out two ways,
+    #    both surfaced loudly below: its scene has no radiance CSV (skipped), or
+    #    the two scenes' band grids don't correspond, so the band-order join is
+    #    rejected and empty (degenerate — an unbridgeable calibration-grid gap).
+    frames, skipped, degenerate = [], [], []
     for _, row in pairs.iterrows():
         meta = pair_metadata(row, PICS_ID, PATCH_ID)
-        t1 = load_scene_spectrum(row["t1_scene_id"], PICS_ID, PATCH_ID,
-                                 RFL_DIR, RAD_DIR)
-        t2 = load_scene_spectrum(row["t2_scene_id"], PICS_ID, PATCH_ID,
-                                 RFL_DIR, RAD_DIR)
+        t1, t2 = specs[row["t1_scene_id"]], specs[row["t2_scene_id"]]
         if t1 is None or t2 is None:
-            which = [side for side, spec in (("t1", t1), ("t2", t2)) if spec is None]
-            print(f"  skipped pair {meta['pair_id']}: missing radiance CSV "
-                  f"for {', '.join(which)}")
-            skipped.append(meta["pair_id"])
+            offenders = [(side, sid) for side, sid, spec in
+                         (("t1", row["t1_scene_id"], t1),
+                          ("t2", row["t2_scene_id"], t2)) if spec is None]
+            skipped.append({"pair_id": meta["pair_id"], "offenders": offenders})
             continue
-        frames.append(compute_pair_delta(t1, t2, meta))
+        df = compute_pair_delta(t1, t2, meta, bad_bands)
+        if df.empty or int(df["rad_t2_median"].notna().sum()) == 0:
+            degenerate.append({"pair_id": meta["pair_id"],
+                               "t1": row["t1_scene_id"], "t2": row["t2_scene_id"]})
+            continue
+        frames.append(df)
 
-    if not frames:
-        print("\nNo pairs produced deltas (all skipped). No CSV written.")
-        sys.exit(1)
+    # 5. Write the tidy long table (whatever succeeded).
+    if frames:
+        table = pd.concat(frames, ignore_index=True)[DELTA_CSV_COLS]
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        table.to_csv(OUT_PATH, index=False)
+        n_pairs = table["pair_id"].nunique()
+        n_rfl = int(table["delta_rfl_pct_median"].notna().sum())
+        n_flagged = int(table["absorption_band_flag"].sum())
+        print("\n--- Summary ---")
+        print(f"  pairs with deltas:     {n_pairs} of {len(pairs)}")
+        print(f"  pairs skipped (no rad):{len(skipped)}")
+        print(f"  pairs degenerate:      {len(degenerate)}")
+        print(f"  rows (pair x wl):      {len(table)}")
+        print(f"  rows with RFL delta:   {n_rfl}  (rest are radiance-only)")
+        print(f"  rows flagged absorp.:  {n_flagged}")
+        print(f"\nWrote delta table -> {OUT_PATH}")
+    else:
+        print("\nNo pairs produced deltas (all dropped). No CSV written.")
 
-    # 3. Concatenate and write the tidy long table.
-    table = pd.concat(frames, ignore_index=True)[DELTA_CSV_COLS]
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    table.to_csv(OUT_PATH, index=False)
-
-    # 4. Summary.
-    n_pairs = table["pair_id"].nunique()
-    n_rfl = int(table["delta_rfl_pct_median"].notna().sum())
-    print("\n--- Summary ---")
-    print(f"  pairs with deltas:   {n_pairs}")
-    print(f"  pairs skipped:       {len(skipped)}")
-    print(f"  rows (pair x wl):    {len(table)}")
-    print(f"  rows with RFL delta: {n_rfl}  (rest are radiance-only)")
-    print(f"\nWrote delta table -> {OUT_PATH}")
+    # 6. LOUD FAIL — never let a dropped pair pass silently. List every dropped
+    #    pair with its cause, then exit non-zero.
+    if skipped or degenerate:
+        bar = "!" * 70
+        print("\n" + bar)
+        print(f"!! INCOMPLETE: {len(skipped) + len(degenerate)} of {len(pairs)} "
+              f"matched pair(s) DROPPED.")
+        print(bar)
+        if skipped:
+            print(f"\n  {len(skipped)} skipped — missing radiance stats:")
+            for s in skipped:
+                print(f"    pair {s['pair_id']}:")
+                for side, sid in s["offenders"]:
+                    print(f"      {side} scene missing radiance CSV: {sid}")
+                    print(f"         expected -> {missing_rad[sid]}")
+            uniq = sorted({str(p) for p in missing_rad.values()})
+            print(f"    {len(uniq)} unique missing file(s):")
+            for p in uniq:
+                print(f"      - {p}")
+            print("    Fix: re-run scripts/run_patch_extract.py for this patch, "
+                  "then re-run this script.")
+        if degenerate:
+            print(f"\n  {len(degenerate)} degenerate — scenes' band grids do "
+                  f"not correspond:")
+            for d in degenerate:
+                print(f"    pair {d['pair_id']}:  {d['t1']}  x  {d['t2']}")
+            print("    Cause: unequal band count, or a per-band wavelength gap "
+                  f"> {WL_MATCH_TOL_NM} nm.\n    Inspect their per-channel "
+                  "central_wl columns before changing WL_MATCH_TOL_NM.")
+        sys.exit(2)
 
 
 if __name__ == "__main__":

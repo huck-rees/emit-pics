@@ -7,6 +7,9 @@ figures/*
 !figures/.gitkeep
 outputs/
 
+# Ad-hoc diagnostic scripts / one-off debugging artifacts — not part of the pipeline.
+troubleshooting/
+
 # Credentials
 .netrc
 _netrc
