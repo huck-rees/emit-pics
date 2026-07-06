@@ -34,8 +34,8 @@ from emit_pics.id_matched_pairs import acq_timestamp
 DELTA_CSV_COLS = [
     "PICS_ID", "patch_id", "pair_id",
     "t1_scene_id", "t2_scene_id", "t1_dt", "t2_dt", "dt_days",
-    "delta_SZA", "delta_VZA",
-    "wavelength", "wavelength_t2",
+    "SZA_t1", "SZA_t2", "delta_SZA", "delta_VZA",
+    "band_index", "wavelength", "wavelength_t2",
     "rfl_t1_median", "rfl_t2_median", "rfl_t1_mean", "rfl_t2_mean",
     "delta_rfl_pct_median", "delta_rfl_pct_mean",
     "rad_t1_median", "rad_t2_median", "rad_t1_mean", "rad_t2_mean",
@@ -237,7 +237,9 @@ def compute_pair_delta(t1_spec: pd.DataFrame, t2_spec: pd.DataFrame,
     meta : dict
         Scalar pair metadata broadcast onto every row: ``PICS_ID``,
         ``patch_id``, ``pair_id``, ``t1_scene_id``, ``t2_scene_id``, ``t1_dt``,
-        ``t2_dt``, ``dt_days``, ``delta_SZA``, ``delta_VZA``.
+        ``t2_dt``, ``dt_days``, ``SZA_t1``, ``SZA_t2`` (absolute per-scene mean
+        SZA), ``delta_SZA``, ``delta_VZA``. A per-band ``band_index`` (0..N-1) is
+        added from the sorted grid as a stable cross-scene channel identity.
     bad_band_wls : np.ndarray, optional
         Water-vapor bad-band wavelengths (from
         :func:`absorption_band_wavelengths`) used to set ``absorption_band_flag``.
@@ -279,8 +281,11 @@ def compute_pair_delta(t1_spec: pd.DataFrame, t2_spec: pd.DataFrame,
         "t1_dt": meta["t1_dt"],
         "t2_dt": meta["t2_dt"],
         "dt_days": meta["dt_days"],
+        "SZA_t1": meta["SZA_t1"],
+        "SZA_t2": meta["SZA_t2"],
         "delta_SZA": meta["delta_SZA"],
         "delta_VZA": meta["delta_VZA"],
+        "band_index": np.arange(len(wl), dtype=int),
         "wavelength": wl,
         "wavelength_t2": wl_t2,
         "rfl_t1_median": m["median_rfl_t1"].to_numpy(),
@@ -314,6 +319,8 @@ def pair_metadata(row: pd.Series, pics_id: str, patch_id: str) -> dict:
         "t1_dt": t1_dt,
         "t2_dt": t2_dt,
         "dt_days": (t2_dt - t1_dt).total_seconds() / 86400.0,
+        "SZA_t1": np.abs(row.get("t1_scene_SZA", np.nan)),
+        "SZA_t2": np.abs(row.get("t2_scene_SZA", np.nan)),
         "delta_SZA": row.get("delta_SZA", np.nan),
         "delta_VZA": row.get("delta_VZA", np.nan),
     }

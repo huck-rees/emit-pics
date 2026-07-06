@@ -36,6 +36,8 @@ the companion `northafrican_pics.gpkg` (for GIS use) can be regenerated from it.
 | `extract_patch_stats` | Low-level openers / windowing / per-channel statistics (shared helpers). |
 | `id_matched_pairs` | Matched-pair detection and SZA/VZA-over-time plotting (pure). |
 | `display_qc_bands` | Per-scene QA/QC multipanel figure rendering. |
+| `delta_calculations` | Per-wavelength **t1→t2** % change across matched pairs (band-order join; tidy long CSV). |
+| `matched_pairs_drift_analysis` | Cross-PICS drift: per-channel Theil–Sen slope of ΔR vs Δt, Kendall-τ + BH-FDR significance, and the drift-spectrum / per-channel figures. |
 | `config` | PICS site geometry from `config/sites.yaml` — `pics_polygon` / `pics_geodataframe` build the ROI rectangle; `write_pics_gpkg` regenerates the GeoPackage. |
 
 The libraries are side-effect-free; each is driven by a thin runner in
@@ -104,7 +106,7 @@ Then, for a chosen patch:
    CSV of the pairwise **t1→t2** percent change in reflectance and radiance
    (median & mean) at every wavelength — one row per `(matched pair × wavelength)`
    → `data/delta_r/{site}_{patch}_delta.csv`. No aggregation or figures; the
-   cross-PICS analysis is a separate future step.
+   cross-PICS analysis is step 7.
 
    The two scenes are aligned **by band order** (band *i* ↔ band *i*), not by
    exact wavelength — EMIT recalibrated its wavelengths mid-record (~0.088 nm
@@ -119,6 +121,22 @@ Because the QC gate is enforced in step 5, run **step 4 before step 5** and do
 the manual inspection in between; QC exclusions then propagate automatically to
 step 6 (which only sees surviving matched pairs). Step 5 requires step 3 (the
 geometry table); step 6 requires steps 3 and 5.
+
+Then, once step 6 has run for the patches you care about (across sites):
+
+7. **`python scripts/run_matched_pairs_drift_analysis.py`**
+   Pure **local** cross-PICS analysis: pools every step-6 delta CSV of one patch
+   size (`PATCH_SIZE`, the first field of `patch_id`, e.g. `10` km) and, per EMIT
+   channel, fits the **radiometric drift rate** as the robust **Theil–Sen** slope
+   of ΔR vs Δt (median statistic, %/yr), with a **Kendall-τ** p-value and
+   **Benjamini–Hochberg** FDR control across the 285 channels. Writes
+   `data/drift/{size}_drift.csv` (per-channel stats, RAD + RFL), a
+   `figures/matched_pairs/{size}_drift_spectrum.png` (drift rate vs wavelength,
+   95% CI whiskers, BH-significance colouring), and — one per channel —
+   `figures/matched_pairs/individual_channels/{size}_{wavelength}.png` (two-panel
+   ΔR-vs-Δt scatter, RAD | RFL; colour/shape = PICS, marker size ∝ mean |SZA|).
+   Requires the step-6 delta CSVs to carry the `SZA_t1`/`SZA_t2`/`band_index`
+   columns (re-run step 6 if they predate that schema).
 
 **Optional:** `python scripts/run_export_pics_gpkg.py` regenerates
 `data/ROIs/northafrican_pics.gpkg` from `config/sites.yaml` for viewing the
