@@ -36,6 +36,7 @@ the companion `northafrican_pics.gpkg` (for GIS use) can be regenerated from it.
 | `extract_patch_stats` | Low-level openers / windowing / per-channel statistics (shared helpers). |
 | `id_matched_pairs` | Matched-pair detection and SZA/VZA-over-time plotting (pure). |
 | `display_qc_bands` | Per-scene QA/QC multipanel figure rendering. |
+| `display_spectra` | Overlay every QC-surviving scene's RAD/RFL spectrum for a patch (one series per scene, date-ramped; absorption bands masked). |
 | `delta_calculations` | Per-wavelength **t1→t2** % change across matched pairs (band-order join; tidy long CSV). |
 | `matched_pairs_drift_analysis` | Cross-PICS drift: per-channel Theil–Sen slope of ΔR vs Δt, Kendall-τ + BH-FDR significance, and the drift-spectrum / per-channel figures. |
 | `config` | PICS site geometry from `config/sites.yaml` — `pics_polygon` / `pics_geodataframe` build the ROI rectangle; `write_pics_gpkg` regenerates the GeoPackage. |
@@ -121,6 +122,17 @@ Because the QC gate is enforced in step 5, run **step 4 before step 5** and do
 the manual inspection in between; QC exclusions then propagate automatically to
 step 6 (which only sees surviving matched pairs). Step 5 requires step 3 (the
 geometry table); step 6 requires steps 3 and 5.
+
+*Parallel diagnostic (optional):* **`python scripts/run_display_spectra.py`**
+runs alongside step 5 on the **same inputs** — it applies the identical QC gate,
+then overlays every surviving scene's spectrum for the patch, one series per
+scene (coloured along a sequential ramp by acquisition date, cycling line style,
+date-labelled legend). Two high-resolution (1000 dpi) PNGs are written,
+`figures/spectra/reflectance/{PICS}_{PATCH}_{stat}_rfl_spectra.png` and
+`figures/spectra/radiance/{PICS}_{PATCH}_{stat}_rad_spectra.png`. Water-vapor
+absorption bands are masked by data availability (where L2A reflectance is fill)
+in **both** products, so every curve breaks in the same windows. Requires only
+step 3 (per-channel CSVs + geometry table) and the reviewed QC worksheet.
 
 Then, once step 6 has run for the patches you care about (across sites):
 
