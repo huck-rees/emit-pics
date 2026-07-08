@@ -3,8 +3,12 @@
 For one EMIT acquisition this library streams the in-patch pixels and renders a
 single figure array: RGB true-color, every L2A MASK band (binary flags plus the
 continuous AOD550 / H2O bands), the OBS-derived SZA and VZA, and a context panel
-overlaying the PICS, granule, and patch boundaries with the nadir track.  It is
-*display only*: no statistics are written to disk and no differencing is done.
+overlaying the PICS, granule, and patch boundaries with the nadir track.  Below
+the map panels two adjacent spectra panels (reflectance | radiance) overlay
+*every* scene covering the patch — the current page's scene bold red, the rest
+faded grey — so a scene with a normal-looking RGB/MASK but an unrealistic
+spectrum can be caught during the manual QC pass.  It is *display only*: no
+statistics are written to disk and no differencing is done.
 
 Pure function library: no top-level execution, no hardcoded parameters, no
 ``__main__`` block, no import side effects.  ``earthaccess.login`` is not called
@@ -15,11 +19,16 @@ duplicated:
 
 * timestamp parsing / band-by-label lookup / KDTree patch mask / granule lookup
   from :mod:`emit_pics.id_matched_pairs`;
-* asset-URL selection and cube windowing from :mod:`emit_pics.extract_patch_stats`.
+* asset-URL selection and cube windowing from :mod:`emit_pics.extract_patch_stats`;
+* absorption-band masking and per-product labels from
+  :mod:`emit_pics.display_spectra` (the spectra panels reuse the same per-channel
+  RAD/RFL stats CSVs and masking as the standalone spectra step).
 
 Map panels are windowed to the in-patch block and pixels outside the patch
 polygon are blanked (NaN -> transparent), so every panel except the final
 context panel is patch-specific.  The context panel is full-scene by design.
+The spectra panels are not patch-windowed — they plot the pre-computed
+per-channel in-patch statistics loaded by the caller.
 """
 
 import warnings
@@ -43,6 +52,7 @@ from emit_pics.extract_patch_stats import (
     find_asset_url,
     window_2d,
 )
+from emit_pics.display_spectra import PRODUCTS, mask_absorption
 
 # ============================================================
 # CONSTANTS
@@ -76,6 +86,13 @@ GEOM_CMAP      = "plasma"    # SZA, VZA
 
 #: Grid width (panels per row); height adapts to the panel count.
 NCOLS = 4
+
+#: Spectra-panel styling.  The current page's scene is drawn bold red on top of
+#: every other patch scene (thin grey), so an anomalous spectrum stands out even
+#: when the RGB/MASK panels look clean.
+SPECTRA_CURRENT_COLOR = "#d62728"   # this page's scene (bold, on top)
+SPECTRA_BG_COLOR      = "0.6"        # every other scene covering the patch
+SPECTRA_STAT_DEFAULT  = "median"     # in-patch statistic plotted per scene
 
 
 # ============================================================
@@ -344,18 +361,96 @@ def _stat_box(ax, txt):
             bbox=dict(boxstyle="round,pad=0.3", facecolor="black", alpha=0.6))
 
 
+def _draw_spectra_panel(ax, spectra, product, current_ts):
+    """Overlay every patch scene's spectrum for one product; highlight the current.
+
+    Every scene covering the patch is drawn thin grey; the current page's scene
+    (matched by acquisition *current_ts*) is drawn bold red on top so an
+    unrealistic spectrum is obvious even when the map panels look clean.  The
+    water-vapor absorption bands are blanked to NaN gaps (same masking as
+    :mod:`emit_pics.display_spectra`), so every curve breaks in the same windows.
+
+    Parameters
+    ----------
+    ax : matplotlib axes
+    spectra : dict or None
+        ``{"entries": [...], "bad_bands": np.ndarray, "stat": "median"|"mean"}``
+        as assembled by the runner (``entries`` are the date-ordered scene dicts
+        from :func:`emit_pics.display_spectra.load_patch_spectra`).  ``None`` /
+        empty draws a placeholder note (no per-channel CSVs available).
+    product : str
+        ``"rfl"`` or ``"rad"`` — selects the ``PRODUCTS`` config and the plotted
+        column ``f"{stat}_{product}"``.
+    current_ts : str or None
+        Acquisition timestamp (``YYYYMMDDThhmmss``) of the current page's scene;
+        the matching entry is the bold-red curve.  No match -> only grey curves
+        plus a "no spectrum" note (soft-skip).
+    """
+    cfg = PRODUCTS[product]
+    ax.set_title(f"{cfg['name']} spectra", fontsize=9)
+    ax.set_xlabel("Wavelength (nm)", fontsize=8)
+    ax.set_ylabel(cfg["y_label"], fontsize=8)
+    ax.tick_params(labelsize=7)
+    ax.grid(True, alpha=0.3)
+
+    entries = (spectra or {}).get("entries") or []
+    if not entries:
+        ax.text(0.5, 0.5, "no per-channel spectra\n(run run_patch_extract.py)",
+                transform=ax.transAxes, ha="center", va="center",
+                fontsize=9, color="0.4")
+        return
+
+    stat = spectra.get("stat", SPECTRA_STAT_DEFAULT)
+    bad_bands = spectra.get("bad_bands")
+    stat_col = f"{stat}_{product}"
+
+    n_bg = 0
+    current = None
+    for e in entries:
+        spec = e["spec"]
+        if stat_col not in spec:
+            continue
+        wl = spec["central_wl"].to_numpy(dtype=float)
+        y = mask_absorption(wl, spec[stat_col].to_numpy(dtype=float), bad_bands)
+        if not np.isfinite(y).any():
+            continue  # this scene has no data for this product (e.g. RFL absent)
+        if current_ts is not None and e["timestamp"] == current_ts:
+            current = (wl, y, e["label"])  # draw last so it sits on top
+            continue
+        ax.plot(wl, y, color=SPECTRA_BG_COLOR, lw=0.6, alpha=0.6, zorder=1)
+        n_bg += 1
+
+    if current is not None:
+        wl, y, label = current
+        ax.plot(wl, y, color=SPECTRA_CURRENT_COLOR, lw=2.0, zorder=3,
+                label=f"this scene ({label})")
+        ax.legend(fontsize=7, loc="upper right", frameon=True)
+    else:
+        ax.text(0.5, 0.98, "this scene: no spectrum", transform=ax.transAxes,
+                ha="center", va="top", fontsize=8,
+                color=SPECTRA_CURRENT_COLOR, fontweight="bold")
+
+    ax.margins(x=0.01)
+    ax.set_title(
+        f"{cfg['name']} spectra "
+        f"({n_bg} other scene{'s' if n_bg != 1 else ''} in grey)", fontsize=9)
+
+
 def render_scene_figure(rfl: dict, obs: dict, *, mask: np.ndarray, bounds,
                         patch_geom_4326, pics_poly,
                         patch_id: str, granule_ur: str, acq_dt,
                         granule_poly=None, ncols: int = NCOLS,
-                        draw_nadir: bool = False):
+                        draw_nadir: bool = False,
+                        spectra=None, acq_ts=None):
     """Render one acquisition's multipanel QA/QC figure.
 
-    Panels: RGB true-color, every MASK band (binary flags discrete green/red,
-    continuous bands with a colorbar), SZA, VZA, and a full-scene context panel
-    (PICS / granule / patch boundaries, optionally with the nadir track).  All
-    map panels are windowed to the in-patch block; the context panel is
-    full-scene.
+    Map panels (a grid ``ncols`` wide): RGB true-color, every MASK band (binary
+    flags discrete green/red, continuous bands with a colorbar), SZA, VZA, and a
+    full-scene context panel (PICS / granule / patch boundaries, optionally with
+    the nadir track).  All map panels are windowed to the in-patch block; the
+    context panel is full-scene.  Below the grid, a full-width row holds two
+    spectra panels (reflectance | radiance) overlaying every patch scene with the
+    current scene bold red (see :func:`_draw_spectra_panel`).
 
     Parameters
     ----------
@@ -379,6 +474,13 @@ def render_scene_figure(rfl: dict, obs: dict, *, mask: np.ndarray, bounds,
         **whole-scene** VZA array, so it is off by default; the VZA panel itself
         is always windowed (cheap).  Enable only when the cosmetic track is worth
         the full-granule read.
+    spectra : dict or None
+        Pre-loaded per-scene spectra for the two bottom panels
+        (``{"entries", "bad_bands", "stat"}``; see :func:`_draw_spectra_panel`).
+        ``None`` / empty draws placeholder notes — the map panels still render.
+    acq_ts : str or None
+        Acquisition timestamp (``YYYYMMDDThhmmss``) of this page's scene, used to
+        pick out the bold-red curve in the spectra panels.
 
     Returns
     -------
@@ -429,9 +531,15 @@ def render_scene_figure(rfl: dict, obs: dict, *, mask: np.ndarray, bounds,
 
     n = len(panels)
     nrows = int(np.ceil(n / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows),
-                             squeeze=False)
-    axes = axes.ravel()
+
+    # Layout: the map grid (nrows x ncols) sits on top; one extra full-width row
+    # below holds the two spectra panels.  A GridSpec lets the spectra row span
+    # the width while the map panels keep the square 4-per-row arrangement.
+    fig = plt.figure(figsize=(4 * ncols, 4 * nrows + 4.5))
+    gs = fig.add_gridspec(nrows + 1, ncols,
+                          height_ratios=[1] * nrows + [1.15])
+    axes = np.array([fig.add_subplot(gs[r, c])
+                     for r in range(nrows) for c in range(ncols)])
 
     for ax, panel in zip(axes, panels):
         kind = panel["kind"]
@@ -463,6 +571,13 @@ def render_scene_figure(rfl: dict, obs: dict, *, mask: np.ndarray, bounds,
     for ax in axes[n:]:
         ax.axis("off")
 
+    # --- bottom full-width row: reflectance | radiance spectra ---
+    half = max(ncols // 2, 1)
+    ax_rfl = fig.add_subplot(gs[nrows, 0:half])
+    ax_rad = fig.add_subplot(gs[nrows, half:ncols])
+    _draw_spectra_panel(ax_rfl, spectra, "rfl", acq_ts)
+    _draw_spectra_panel(ax_rad, spectra, "rad", acq_ts)
+
     # shared flag legend (single per page)
     flag_handles = [
         Patch(facecolor=FLAG_GOOD_COLOR, edgecolor="none", label="good (0)"),
@@ -474,9 +589,9 @@ def render_scene_figure(rfl: dict, obs: dict, *, mask: np.ndarray, bounds,
 
     fig.suptitle(
         f"{patch_id}  |  {granule_ur}\n"
-        f"{acq_dt:%Y-%m-%d}   MASK bands + OBS geometry + footprints "
-        f"(in-patch pixels for maps)",
+        f"{acq_dt:%Y-%m-%d}   MASK bands + OBS geometry + footprints + spectra "
+        f"(in-patch pixels for maps; current scene bold red in spectra)",
         fontsize=12, fontweight="bold",
     )
-    fig.tight_layout(rect=[0, 0.03, 1, 0.94])
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
     return fig

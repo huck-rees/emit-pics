@@ -5,10 +5,12 @@ dependencies:
   - python>=3.10
   - numpy
   - pandas
+  - scipy
   - xarray
   - netCDF4
   - rasterio
   - geopandas
+  - shapely
   - matplotlib
   - pyyaml
   - jupyter

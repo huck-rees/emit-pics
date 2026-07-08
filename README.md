@@ -35,7 +35,7 @@ the companion `northafrican_pics.gpkg` (for GIS use) can be regenerated from it.
 | `patch_extract` | **Unified per-acquisition extraction** — open each granule once, build the in-patch mask once, dispatch to all extractors, and persist the raw pixel cube. |
 | `extract_patch_stats` | Low-level openers / windowing / per-channel statistics (shared helpers). |
 | `id_matched_pairs` | Matched-pair detection and SZA/VZA-over-time plotting (pure). |
-| `display_qc_bands` | Per-scene QA/QC multipanel figure rendering. |
+| `display_qc_visuals` | Per-scene QA/QC multipanel figure rendering (map panels + reflectance/radiance spectra overlay). |
 | `display_spectra` | Overlay every QC-surviving scene's RAD/RFL spectrum for a patch (one series per scene, date-ramped; absorption bands masked). |
 | `delta_calculations` | Per-wavelength **t1→t2** % change across matched pairs (band-order join; tidy long CSV). |
 | `matched_pairs_drift_analysis` | Cross-PICS drift: per-channel Theil–Sen slope of ΔR vs Δt, Kendall-τ + BH-FDR significance, and the drift-spectrum / per-channel figures. |
@@ -85,10 +85,23 @@ Then, for a chosen patch:
    the raw in-patch **pixel cube** (NetCDF). Optional Aggregate-Flag screening of
    the per-channel stats.
 
-4. **`python scripts/run_display_qc_bands.py`**
-   Per-scene QA/QC snapshot PDF (RGB, every MASK band, SZA/VZA, footprint
-   context) for one patch, **and** it creates/refreshes the patch's **QC
-   worksheet** `data/qc/{site}_{patch}_qc.csv` (one row per scene).
+4. **`python scripts/run_display_qc_visuals.py`**
+   Per-scene QA/QC snapshot PDF for one patch — each page has the map panels
+   (RGB, every MASK band, SZA/VZA, footprint context) **and**, below them, two
+   adjacent spectra panels (reflectance | radiance) overlaying every scene that
+   covers the patch, with the current page's scene bold red and the rest faded
+   grey. The spectra let you reject scenes whose RGB/MASK look fine but whose
+   spectrum is unrealistic. The PDF is written to
+   `data/qc/{site}_{patch}_QC_snapshots.pdf` — the same folder as the QC
+   worksheet. The step also creates/refreshes that **QC worksheet**
+   `data/qc/{site}_{patch}_qc.csv` (one row per scene).
+
+   The spectra panels reuse the per-channel RAD/RFL stats CSVs from step 3
+   (`SPECTRA_STAT` selects `median`/`mean`; the deep water-vapor absorption bands
+   are blanked as gaps in both products). No QC filtering is applied here — this
+   is the step that *decides* what to keep — so every scene in the geometry table
+   is overlaid; a scene missing its radiance CSV simply has no bold-red curve
+   (soft-skip, noted in the console).
 
    *→ Manual step:* open the PDF, and in the worksheet set `keep=FALSE` (with a
    `reason`: cloud / coverage / artifact / other) for any bad scene, then set

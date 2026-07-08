@@ -2,7 +2,7 @@
 
 This module consolidates the streaming/masking layer that used to be duplicated
 across :mod:`emit_pics.id_matched_pairs` (geometry), :mod:`emit_pics.extract_patch_stats`
-(per-channel radiance/reflectance) and :mod:`emit_pics.display_qc_bands` (QC
+(per-channel radiance/reflectance) and :mod:`emit_pics.display_qc_visuals` (QC
 rendering).  For one acquisition it:
 
 1. opens each EMIT asset **once** (L2A reflectance + MASK, L1B radiance, L1B OBS),
@@ -29,8 +29,8 @@ Design rules (consistent with the rest of the package):
 
 Low-level helpers proven elsewhere are reused rather than duplicated; only the
 two granule openers that previously lived in the matplotlib-importing
-:mod:`emit_pics.display_qc_bands` are re-stated here so this module stays free of
-any plotting dependency.
+:mod:`emit_pics.display_qc_visuals` are re-stated here so this module stays free
+of any plotting dependency.
 """
 
 from pathlib import Path
@@ -482,7 +482,7 @@ def cube_to_render_inputs(ds: xr.Dataset):
     -------
     dict or None
         ``{"rfl", "obs", "mask", "bounds", "granule_poly"}`` ready to splat into
-        :func:`emit_pics.display_qc_bands.render_scene_figure`, or ``None`` if the
+        :func:`emit_pics.display_qc_visuals.render_scene_figure`, or ``None`` if the
         cube lacks the reflectance / MASK / geometry needed for a full QC page.
     """
     needed = ("reflectance", "mask", "sza", "vza")

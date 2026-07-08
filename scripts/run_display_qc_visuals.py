@@ -1,27 +1,39 @@
 #!/usr/bin/env python
-"""Render per-scene QA/QC snapshots for one patch into a single PDF.
+"""Render per-scene QA/QC visuals for one patch into a single PDF.
 
 For every EMIT acquisition that fully covers the patch (read from the
 patch-granule dictionary; no live search), this script:
 
 1. Pairs the L1B_RAD and L2A_RFL granules by acquisition timestamp.
 2. Opens each acquisition's files once (L2A reflectance + MASK, L1B OBS) and
-   builds one multipanel QA/QC figure: RGB, every MASK band, SZA, VZA, and a
-   context panel with the PICS / granule / patch boundaries and nadir track.
-3. Writes one page per acquisition (chronological) to a single PDF.
+   builds one multipanel QA/QC figure: RGB, every MASK band, SZA, VZA, a context
+   panel with the PICS / granule / patch boundaries and nadir track, and — below
+   the maps — two spectra panels (reflectance | radiance) overlaying every scene
+   covering the patch with the current scene bold red.  The spectra let the
+   reviewer reject scenes whose RGB/MASK look fine but whose spectrum is
+   unrealistic.
+3. Writes one page per acquisition (chronological) to a single PDF, co-located
+   with the QC worksheet under ``data/qc``.
 
 A pair missing either product (L2A_RFL or L1B_RAD) is skipped and noted; no
 pre-filtering on cloud / AOD is done at this stage.
 
+The spectra panels reuse the per-channel RAD/RFL stats CSVs written by
+``run_patch_extract.py`` (the same source as ``run_display_spectra.py``), loaded
+once up front for every scene in the patch geometry table — *no* QC filtering
+here, since this step is where the reviewer decides what to keep.  A scene whose
+radiance stats CSV is absent simply has no bold-red curve on its page (soft-skip,
+noted in the console); the map panels still render.
+
 Cube-first: if ``run_patch_extract.py`` already cached a pixel cube for an
-acquisition, its page is rebuilt locally from that cube (no network, no
+acquisition, its map panels are rebuilt locally from that cube (no network, no
 re-masking); otherwise the granule is streamed.  Set ``PREFER_CUBE = False`` to
 always stream.  The nadir track needs whole-scene VZA and so is drawn only on the
 streaming path.
 
 Edit the user-configurable inputs below, then run::
 
-    python scripts/run_display_qc_bands.py
+    python scripts/run_display_qc_visuals.py
 """
 
 import os
@@ -37,9 +49,10 @@ PATCH_ID = "10_7_1"        # patch_id within the dictionary / bnds gpkg
 RAD_SHORT_NAME = "EMITL1BRAD"   # L1B radiance (+ bundled OBS) collection
 RFL_SHORT_NAME = "EMITL2ARFL"   # L2A reflectance (+ MASK) collection
 
-PREFER_CUBE = True   # render from the cached pixel cube when present (no network)
+PREFER_CUBE = True   # render map panels from the cached pixel cube when present
 DRAW_NADIR  = False  # draw the nadir track? requires a whole-scene VZA read per page
                      # (streaming path only; a cube has no whole-scene VZA)
+SPECTRA_STAT = "median"  # in-patch statistic for the spectra panels ("median"/"mean")
 
 # Paths (repo-relative — identical on every machine)
 _REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
@@ -48,14 +61,15 @@ PATCH_DIR = DATA_ROOT / "ROIs" / "patches"
 CUBE_DIR  = DATA_ROOT / "pixel_cubes"
 GEOM_DIR  = DATA_ROOT / "geometry"
 MASK_DIR  = DATA_ROOT / "mask_summary"
+RFL_DIR   = DATA_ROOT / "reflectance"   # per-channel RFL stats CSVs (spectra source)
+RAD_DIR   = DATA_ROOT / "radiance"      # per-channel RAD stats CSVs (spectra source)
 QC_DIR    = DATA_ROOT / "qc"
-FIG_DIR   = _REPO_ROOT / "figures" / "QC"
 
 DICT_PATH = PATCH_DIR / f"patch_EMIT_dict_{PICS_ID}.csv"
 BNDS_PATH = PATCH_DIR / f"patches_{PICS_ID}_bnds.gpkg"
 GEOM_PATH = GEOM_DIR / f"geometry_{PICS_ID}_{PATCH_ID}.csv"
 QC_PATH   = QC_DIR / f"{PICS_ID}_{PATCH_ID}_qc.csv"
-OUT_PDF   = FIG_DIR / f"{PICS_ID}_{PATCH_ID}_QC_snapshots.pdf"
+OUT_PDF   = QC_DIR / f"{PICS_ID}_{PATCH_ID}_QC_snapshots.pdf"  # sits beside the QC CSV
 
 # ============================================================
 # Ensure the project root is on sys.path so 'emit_pics' is
@@ -69,6 +83,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 import earthaccess
+import pandas as pd
 
 from emit_pics.id_matched_pairs import (
     fetch_granule,
@@ -85,22 +100,51 @@ from emit_pics.extract_patch_stats import (
     with_retry,
 )
 from emit_pics.config import pics_polygon
-from emit_pics.display_qc_bands import (
+from emit_pics.display_qc_visuals import (
     granule_footprint_4326,
     open_obs,
     open_rfl_mask,
     render_scene_figure,
 )
+from emit_pics.display_spectra import derive_bad_bands, load_patch_spectra
 from emit_pics.patch_extract import cube_to_render_inputs, read_cube_netcdf
 from emit_pics.qc_gate import QC_REASONS, build_qc_sheet
 
 
-def render_from_cube(cube_path, dt, patch_geom, pics_poly, pdf) -> str:
+def load_spectra_context(geom_path, stat):
+    """Load every patch scene's per-channel spectrum once for the QC spectra panels.
+
+    Reads the per-scene geometry table (all scenes — this step is *where* QC
+    happens, so no keep/drop filtering) and pulls each scene's RAD/RFL per-channel
+    stats via :func:`load_patch_spectra`.  Returns the context dict consumed by
+    ``render_scene_figure`` (keyed for per-page highlight by acquisition
+    timestamp) plus the ``missing`` scenes (no radiance CSV) for reporting.
+
+    Returns ``({"entries", "bad_bands", "stat"}, missing)``.  If the geometry
+    table is absent the context has no entries, so pages render with empty spectra
+    panels rather than failing (soft-skip).
+    """
+    if not geom_path.exists():
+        print(f"  no geometry table ({geom_path.name}); spectra panels will be "
+              f"empty. Run run_patch_extract.py to populate them.")
+        return {"entries": [], "bad_bands": None, "stat": stat}, []
+
+    scenes = pd.read_csv(geom_path)
+    scenes["datetime"] = pd.to_datetime(scenes["datetime"])
+    loaded, missing = load_patch_spectra(scenes, PICS_ID, PATCH_ID,
+                                         RFL_DIR, RAD_DIR)
+    bad_bands = derive_bad_bands(loaded) if loaded else None
+    return {"entries": loaded, "bad_bands": bad_bands, "stat": stat}, missing
+
+
+def render_from_cube(cube_path, ts, dt, patch_geom, pics_poly, spectra, pdf) -> str:
     """Render one acquisition's page from a cached pixel cube — no network.
 
     Returns ``"produced"`` (page written) or ``"missing"`` (the cube lacks the
     reflectance / MASK / geometry needed for a full page).  The nadir track is
-    unavailable from a cube, so it is never drawn here.
+    unavailable from a cube, so it is never drawn here.  The spectra panels come
+    from the pre-loaded *spectra* context (independent of the cube), keyed to this
+    scene by *ts*.
     """
     ds = read_cube_netcdf(cube_path)
     try:
@@ -113,6 +157,7 @@ def render_from_cube(cube_path, dt, patch_geom, pics_poly, pdf) -> str:
             patch_geom_4326=patch_geom, pics_poly=pics_poly,
             granule_poly=inp["granule_poly"], patch_id=PATCH_ID,
             granule_ur=str(ds.attrs.get("rfl_ur", "")), acq_dt=dt, draw_nadir=False,
+            spectra=spectra, acq_ts=ts,
         )
         pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
@@ -122,14 +167,15 @@ def render_from_cube(cube_path, dt, patch_geom, pics_poly, pdf) -> str:
         ds.close()
 
 
-def process_acquisition(acq, patch_geom, pics_poly, pdf) -> str:
+def process_acquisition(acq, patch_geom, pics_poly, spectra, pdf) -> str:
     """Render and append one acquisition's page to *pdf*.
 
     Cube-first: if a cached pixel cube exists for the acquisition it is rendered
     locally (no network); otherwise the granule is streamed.  Returns
     ``"produced"`` (page written), ``"missing"`` (a required product or in-patch
     pixels were absent, nothing written), or raises on transient errors that
-    survive retries, for the caller to record as an error drop.
+    survive retries, for the caller to record as an error drop.  *spectra* is the
+    pre-loaded per-scene spectra context for the bottom panels.
     """
     ts, dt = acq["timestamp"], acq["datetime"]
 
@@ -137,7 +183,8 @@ def process_acquisition(acq, patch_geom, pics_poly, pdf) -> str:
     if PREFER_CUBE:
         cube_path = CUBE_DIR / f"cube_{PICS_ID}_{PATCH_ID}_{ts}.nc"
         if cube_path.exists():
-            return render_from_cube(cube_path, dt, patch_geom, pics_poly, pdf)
+            return render_from_cube(cube_path, ts, dt, patch_geom, pics_poly,
+                                    spectra, pdf)
 
     # Streaming fallback — both products are required for a complete page.
     if acq["rfl_ur"] is None or acq["rad_ur"] is None:
@@ -164,7 +211,7 @@ def process_acquisition(acq, patch_geom, pics_poly, pdf) -> str:
                 patch_geom_4326=patch_geom, pics_poly=pics_poly,
                 granule_poly=granule_footprint_4326(gran_l2a["umm"]),
                 patch_id=PATCH_ID, granule_ur=acq["rfl_ur"], acq_dt=dt,
-                draw_nadir=DRAW_NADIR,
+                draw_nadir=DRAW_NADIR, spectra=spectra, acq_ts=ts,
             )
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
@@ -197,15 +244,28 @@ def main() -> None:
     patch_geom = load_patch_geom_4326(BNDS_PATH, PATCH_ID)
     pics_poly = pics_polygon(PICS_ID)
 
-    # 3. Render every acquisition into one PDF; bucket outcomes.
-    os.makedirs(FIG_DIR, exist_ok=True)
+    # 2b. Load every patch scene's per-channel spectrum ONCE for the bottom
+    #     spectra panels (no QC filtering — this step is where QC happens).
+    print(f"\nLoading per-scene spectra ({SPECTRA_STAT}) for the QC panels...")
+    spectra, missing_spec = load_spectra_context(GEOM_PATH, SPECTRA_STAT)
+    n_spec = len(spectra["entries"])
+    print(f"  {n_spec} scene(s) with radiance stats -> spectra overlay.")
+    if missing_spec:
+        print(f"  {len(missing_spec)} scene(s) without a radiance CSV get no "
+              f"bold-red spectrum (re-run run_patch_extract.py to include them):")
+        for e in missing_spec:
+            print(f"    {e['label']}  ({e['scene_id']})")
+
+    # 3. Render every acquisition into one PDF (co-located with the QC worksheet).
+    os.makedirs(QC_DIR, exist_ok=True)
     produced, errored, missing = [], [], []
     with PdfPages(OUT_PDF) as pdf:
         for k, acq in enumerate(acquisitions, 1):
             ts = acq["timestamp"]
             print(f"\n[{k}/{len(acquisitions)}] {ts}")
             try:
-                status = process_acquisition(acq, patch_geom, pics_poly, pdf)
+                status = process_acquisition(acq, patch_geom, pics_poly,
+                                             spectra, pdf)
             except Exception as ex:
                 print(f"  FAILED {ts}: {type(ex).__name__}: {ex}")
                 errored.append(ts)

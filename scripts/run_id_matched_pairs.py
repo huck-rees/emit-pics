@@ -89,7 +89,7 @@ def main() -> None:
     print(f"Patch {PATCH_ID}: {len(scenes)} scene(s) from {GEOM_PATH.name}")
 
     # 1b. Manual QC gate — drop scenes marked keep=FALSE in the reviewed
-    #     worksheet (created/refreshed by run_display_qc_bands.py).
+    #     worksheet (created/refreshed by run_display_qc_visuals.py).
     try:
         scenes, qc = apply_qc_filter(scenes, QC_PATH,
                                      require_review=REQUIRE_QC_REVIEW)
