@@ -395,7 +395,7 @@ def _draw_spectra_panel(ax, spectra, product, current_ts):
 
     entries = (spectra or {}).get("entries") or []
     if not entries:
-        ax.text(0.5, 0.5, "no per-channel spectra\n(run run_patch_extract.py)",
+        ax.text(0.5, 0.5, "no per-channel spectra\n(run run_single_patch_cube_extract.py)",
                 transform=ax.transAxes, ha="center", va="center",
                 fontsize=9, color="0.4")
         return

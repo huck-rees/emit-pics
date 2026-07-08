@@ -3,7 +3,7 @@
 
 Pure **local post-processor** — no Earthdata, no streaming, no re-masking.  All
 the geometry it needs (per-scene SZA/VZA means *and* percentiles, plus the
-valid-pixel count) was streamed once and cached by ``run_patch_extract.py`` into
+valid-pixel count) was streamed once and cached by ``run_single_patch_cube_extract.py`` into
 the per-scene geometry table; this script just reads that table and:
 
 1. computes every unique scene pair's |ΔSZA| / |ΔVZA| / Δtime and flags the
@@ -16,7 +16,7 @@ A *matched pair* is two acquisitions with ``|ΔSZA| <= SZA_TOL`` and
 ``|ΔVZA| <= VZA_TOL``.  Because the geometry comes from the shared OBS file,
 matching is identical for the L1B_RAD and L2A_RFL products.
 
-Run ``scripts/run_patch_extract.py`` for this patch first to produce the
+Run ``scripts/run_single_patch_cube_extract.py`` for this patch first to produce the
 geometry table, then edit the inputs below and run::
 
     python scripts/run_id_matched_pairs.py
@@ -37,7 +37,7 @@ VZA_TOL  = 5.0             # view-zenith match tolerance (degrees)
 REQUIRE_QC_REVIEW = True   # require a reviewed QC worksheet before proceeding;
                            # set False to bypass the manual QC gate entirely
 
-# Paths (repo-relative; geometry table produced by run_patch_extract.py)
+# Paths (repo-relative; geometry table produced by run_single_patch_cube_extract.py)
 _REPO_ROOT  = Path(__file__).resolve().parent.parent          # .../emit-pics
 DATA_ROOT   = _REPO_ROOT / "data"
 PATCH_DIR   = DATA_ROOT / "ROIs" / "patches"
@@ -73,7 +73,7 @@ def load_scenes(geom_path: Path) -> pd.DataFrame:
     """Load the per-scene geometry table, coercing datetime and the RFL flag."""
     if not geom_path.exists():
         print(f"Geometry table not found: {geom_path}\n"
-              f"Run scripts/run_patch_extract.py for this patch first.")
+              f"Run scripts/run_single_patch_cube_extract.py for this patch first.")
         sys.exit(1)
     scenes = pd.read_csv(geom_path)
     scenes["datetime"] = pd.to_datetime(scenes["datetime"])

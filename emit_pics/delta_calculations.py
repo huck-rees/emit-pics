@@ -2,7 +2,7 @@
 
 Pure function library — no top-level execution, no hardcoded paths, no side
 effects on import. Given the matched-pair list (from ``id_matched_pairs``) and
-the per-acquisition per-channel stats CSVs (from ``run_patch_extract``), this
+the per-acquisition per-channel stats CSVs (from ``run_single_patch_cube_extract``), this
 computes, for each matched pair and each wavelength, the pairwise **t1 -> t2**
 percent change of the median and mean in-patch value, for both products.
 

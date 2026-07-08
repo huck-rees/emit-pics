@@ -5,7 +5,7 @@ Pure **local** post-processor — no Earthdata, no streaming. Runs *parallel* to
 ``run_id_matched_pairs.py`` on the **same inputs** (a PICS/patch and its cached
 per-scene geometry table): it applies the identical manual QC gate, then for
 every surviving scene loads the per-channel RAD/RFL stats CSVs
-(``run_patch_extract.py``) and draws one high-resolution overlay figure per
+(``run_single_patch_cube_extract.py``) and draws one high-resolution overlay figure per
 product — each scene a separate series, coloured along a sequential ramp by
 acquisition date with a date-labelled legend.
 
@@ -18,7 +18,7 @@ Outputs (repo-relative)::
     figures/spectra/reflectance/{PICS}_{PATCH}_{stat}_rfl_spectra.png
     figures/spectra/radiance/{PICS}_{PATCH}_{stat}_rad_spectra.png
 
-Run ``run_patch_extract.py`` (per-channel CSVs + geometry table) and complete the
+Run ``run_single_patch_cube_extract.py`` (per-channel CSVs + geometry table) and complete the
 manual QC step (``run_display_qc_visuals.py`` -> mark the worksheet reviewed) first,
 then edit the inputs below and run::
 
@@ -75,7 +75,7 @@ def load_scenes(geom_path: Path) -> pd.DataFrame:
     """Load the per-scene geometry table, coercing datetime and the RFL flag."""
     if not geom_path.exists():
         print(f"Geometry table not found: {geom_path}\n"
-              f"Run scripts/run_patch_extract.py for this patch first.")
+              f"Run scripts/run_single_patch_cube_extract.py for this patch first.")
         sys.exit(1)
     scenes = pd.read_csv(geom_path)
     scenes["datetime"] = pd.to_datetime(scenes["datetime"])
@@ -114,7 +114,7 @@ def main() -> None:
                                          RFL_DIR, RAD_DIR)
     if missing:
         print(f"\n{len(missing)} scene(s) skipped — no radiance per-channel CSV "
-              f"(re-run run_patch_extract.py to include them):")
+              f"(re-run run_single_patch_cube_extract.py to include them):")
         for e in missing:
             print(f"  {e['label']}  ({e['scene_id']})")
     if not loaded:

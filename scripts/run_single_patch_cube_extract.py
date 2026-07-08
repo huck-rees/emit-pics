@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 """Unified per-acquisition extraction over one patch — open once, mask once.
 
+For streaming **every** patch of a given size across a whole PICS in one pass
+(each granule opened once regardless of how many patches it covers), use
+``scripts/run_PICS_allpatches_cube_extract.py`` instead — the batched,
+loop-inverted counterpart to this single-patch runner.
+
 For every EMIT acquisition that covers the patch (read from the patch-granule
 dictionary; no live search), this script opens each granule's files **once**,
 builds the in-patch pixel mask **once**, and from that single in-memory cube
@@ -30,7 +35,7 @@ granule-set-cover selection actually uses; do not cache all nested sizes en mass
 
 Edit the user-configurable inputs below, then run::
 
-    python scripts/run_patch_extract.py
+    python scripts/run_single_patch_cube_extract.py
 """
 
 import sys
@@ -86,7 +91,7 @@ from emit_pics.extract_patch_stats import (
     split_products,
     write_perchannel_csv,
 )
-from emit_pics.patch_extract import (
+from emit_pics.single_patch_cube_extract import (
     aggregate_keep,
     channel_stats_from_cube,
     extract_acquisition,

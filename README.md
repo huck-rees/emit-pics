@@ -32,7 +32,8 @@ the companion `northafrican_pics.gpkg` (for GIS use) can be regenerated from it.
 | --- | --- |
 | `patch_generator` | Tile a PICS boundary into nested, fully-contained square patches. |
 | `id_granules` | Search NASA Earthdata; determine which granules fully cover each patch. |
-| `patch_extract` | **Unified per-acquisition extraction** — open each granule once, build the in-patch mask once, dispatch to all extractors, and persist the raw pixel cube. |
+| `single_patch_cube_extract` | **Unified per-acquisition extraction for one patch** — open each granule once, build the in-patch mask once, dispatch to all extractors, and persist the raw pixel cube. |
+| `PICS_allpatches_cube_extract` | **Batched extraction of every patch of one size** — loop-inverted (open each granule once, index its geolocation once, extract every patch it covers); reuses the single-patch openers, derivations and persistence. |
 | `extract_patch_stats` | Low-level openers / windowing / per-channel statistics (shared helpers). |
 | `id_matched_pairs` | Matched-pair detection and SZA/VZA-over-time plotting (pure). |
 | `display_qc_visuals` | Per-scene QA/QC multipanel figure rendering (map panels + reflectance/radiance spectra overlay). |
@@ -78,12 +79,24 @@ per-patch analyses that all branch off the patch–granule dictionary.
 
 Then, for a chosen patch:
 
-3. **`python scripts/run_patch_extract.py`**
-   The single streaming pass. Opens each granule **once**, builds the in-patch
-   mask **once**, and writes per-channel L1B radiance / L2A reflectance stats,
-   the per-scene SZA/VZA **geometry table**, MASK-band summaries, and (opt-in)
-   the raw in-patch **pixel cube** (NetCDF). Optional Aggregate-Flag screening of
-   the per-channel stats.
+3. **`python scripts/run_single_patch_cube_extract.py`**
+   The single streaming pass for **one** patch. Opens each granule **once**,
+   builds the in-patch mask **once**, and writes per-channel L1B radiance / L2A
+   reflectance stats, the per-scene SZA/VZA **geometry table**, MASK-band
+   summaries, and (opt-in) the raw in-patch **pixel cube** (NetCDF). Optional
+   Aggregate-Flag screening of the per-channel stats.
+
+   *Batched alternative:* **`python scripts/run_PICS_allpatches_cube_extract.py`**
+   extracts **every patch of a given size** (`PATCH_SIZE`, e.g. `10` km) across
+   the whole PICS in one pass, writing the identical per-patch outputs. It
+   **inverts the loop nesting** — iterating acquisitions on the outside and
+   patches on the inside — so each granule is opened once and its full-scene
+   lon/lat read and KDTree built once, instead of once *per patch it covers*
+   (which a naive wrapper over the single-patch runner would do; within a PICS one
+   granule covers most patches). Granule opens / geolocation reads / KDTree builds
+   drop from `O(#granules × #patches)` to `O(#granules)`; only the windowed
+   spectral reads stay per-patch. Prefer it when processing a whole size at once;
+   use the single-patch runner for one-off patches or re-runs.
 
 4. **`python scripts/run_display_qc_visuals.py`**
    Per-scene QA/QC snapshot PDF for one patch — each page has the map panels
@@ -174,7 +187,8 @@ input — the scripts read the geometry straight from the YAML.
 
 ## Pixel-cube cache
 
-`run_patch_extract.py` can persist the raw, **unscreened** in-patch pixel cube
+Both `run_single_patch_cube_extract.py` and `run_PICS_allpatches_cube_extract.py`
+can persist the raw, **unscreened** in-patch pixel cube
 per `(patch, acquisition)` to NetCDF (`CACHE_PIXELS = True`). It stores the
 polygon-contained pixels flattened to `(pixel, band)` with fill values intact,
 plus per-pixel SZA/VZA, lon/lat, every MASK band, and full-scene `row`/`col`

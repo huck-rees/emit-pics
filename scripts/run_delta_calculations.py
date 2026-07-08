@@ -4,13 +4,13 @@
 Pure **local** post-processor (no Earthdata). For a single PICS/patch it reads:
 
 * the matched-pairs CSV  (``run_id_matched_pairs.py``), and
-* the per-acquisition per-channel RAD/RFL stats CSVs (``run_patch_extract.py``),
+* the per-acquisition per-channel RAD/RFL stats CSVs (``run_single_patch_cube_extract.py``),
 
 and writes one tidy long CSV — one row per ``(matched pair x wavelength)`` — of
 the pairwise t1 -> t2 percent change in reflectance and radiance (median & mean).
 No aggregation, no figures: the cross-PICS analysis is a separate future step.
 
-Requires ``run_patch_extract.py`` (per-channel CSVs) and
+Requires ``run_single_patch_cube_extract.py`` (per-channel CSVs) and
 ``run_id_matched_pairs.py`` (matched-pairs CSV) to have run first for this patch.
 
 Edit the user-configurable inputs below, then run::
@@ -162,7 +162,7 @@ def main() -> None:
             print(f"    {len(uniq)} unique missing file(s):")
             for p in uniq:
                 print(f"      - {p}")
-            print("    Fix: re-run scripts/run_patch_extract.py for this patch, "
+            print("    Fix: re-run scripts/run_single_patch_cube_extract.py for this patch, "
                   "then re-run this script.")
         if degenerate:
             print(f"\n  {len(degenerate)} degenerate — scenes' band grids do "

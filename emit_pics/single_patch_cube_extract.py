@@ -1,4 +1,12 @@
-"""Unified per-acquisition extraction over a patch — open once, mask once.
+"""Unified per-acquisition extraction over a **single patch** — open once, mask once.
+
+This is the single-patch extraction path (driven by
+``scripts/run_single_patch_cube_extract.py``).  For streaming **every** patch of a
+given size in a PICS without re-opening each granule once per patch, see
+:mod:`emit_pics.PICS_allpatches_cube_extract`, which reuses the openers,
+derivations and persistence defined here but inverts the loop nesting (open each
+granule once, build its geolocation index once, then extract every covered
+patch).
 
 This module consolidates the streaming/masking layer that used to be duplicated
 across :mod:`emit_pics.id_matched_pairs` (geometry), :mod:`emit_pics.extract_patch_stats`

@@ -3,7 +3,7 @@
 Pure function library — no top-level execution, no hardcoded paths, no side
 effects on import. Given a QC-filtered per-scene table (the same geometry table
 ``id_matched_pairs`` consumes) and the per-acquisition per-channel RAD/RFL stats
-CSVs (from ``run_patch_extract``), this loads each surviving scene's spectrum and
+CSVs (from ``run_single_patch_cube_extract``), this loads each surviving scene's spectrum and
 draws one overlay figure per product — every scene a separate series.
 
 Design mirrors the delta/drift steps:

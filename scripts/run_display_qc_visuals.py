@@ -19,13 +19,13 @@ A pair missing either product (L2A_RFL or L1B_RAD) is skipped and noted; no
 pre-filtering on cloud / AOD is done at this stage.
 
 The spectra panels reuse the per-channel RAD/RFL stats CSVs written by
-``run_patch_extract.py`` (the same source as ``run_display_spectra.py``), loaded
+``run_single_patch_cube_extract.py`` (the same source as ``run_display_spectra.py``), loaded
 once up front for every scene in the patch geometry table — *no* QC filtering
 here, since this step is where the reviewer decides what to keep.  A scene whose
 radiance stats CSV is absent simply has no bold-red curve on its page (soft-skip,
 noted in the console); the map panels still render.
 
-Cube-first: if ``run_patch_extract.py`` already cached a pixel cube for an
+Cube-first: if ``run_single_patch_cube_extract.py`` already cached a pixel cube for an
 acquisition, its map panels are rebuilt locally from that cube (no network, no
 re-masking); otherwise the granule is streamed.  Set ``PREFER_CUBE = False`` to
 always stream.  The nadir track needs whole-scene VZA and so is drawn only on the
@@ -107,7 +107,7 @@ from emit_pics.display_qc_visuals import (
     render_scene_figure,
 )
 from emit_pics.display_spectra import derive_bad_bands, load_patch_spectra
-from emit_pics.patch_extract import cube_to_render_inputs, read_cube_netcdf
+from emit_pics.single_patch_cube_extract import cube_to_render_inputs, read_cube_netcdf
 from emit_pics.qc_gate import QC_REASONS, build_qc_sheet
 
 
@@ -126,7 +126,7 @@ def load_spectra_context(geom_path, stat):
     """
     if not geom_path.exists():
         print(f"  no geometry table ({geom_path.name}); spectra panels will be "
-              f"empty. Run run_patch_extract.py to populate them.")
+              f"empty. Run run_single_patch_cube_extract.py to populate them.")
         return {"entries": [], "bad_bands": None, "stat": stat}, []
 
     scenes = pd.read_csv(geom_path)
@@ -252,7 +252,7 @@ def main() -> None:
     print(f"  {n_spec} scene(s) with radiance stats -> spectra overlay.")
     if missing_spec:
         print(f"  {len(missing_spec)} scene(s) without a radiance CSV get no "
-              f"bold-red spectrum (re-run run_patch_extract.py to include them):")
+              f"bold-red spectrum (re-run run_single_patch_cube_extract.py to include them):")
         for e in missing_spec:
             print(f"    {e['label']}  ({e['scene_id']})")
 
@@ -307,7 +307,7 @@ def main() -> None:
               "honor these exclusions.")
     else:
         print(f"\nNo geometry table ({GEOM_PATH.name}); QC worksheet not "
-              "generated. Run run_patch_extract.py first.")
+              "generated. Run run_single_patch_cube_extract.py first.")
 
 
 if __name__ == "__main__":
