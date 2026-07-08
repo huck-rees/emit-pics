@@ -37,6 +37,8 @@ the companion `northafrican_pics.gpkg` (for GIS use) can be regenerated from it.
 | `extract_patch_stats` | Low-level openers / windowing / per-channel statistics (shared helpers). |
 | `id_matched_pairs` | Matched-pair detection and SZA/VZA-over-time plotting (pure). |
 | `display_qc_visuals` | Per-scene QA/QC multipanel figure rendering (map panels + reflectance/radiance spectra overlay). |
+| `qc_report` | Per-patch QC report orchestration — PDF pages (cube-first, lazy Earthdata login) + non-destructive worksheet refresh; shared by the single-patch and batched QC runners. |
+| `qc_review` | Interactive keep/remove reviewer (pure matplotlib) that renders each scene from the cached cubes and writes verdicts straight to the per-patch `qc.csv`. |
 | `display_spectra` | Overlay every QC-surviving scene's RAD/RFL spectrum for a patch (one series per scene, date-ramped; absorption bands masked). |
 | `delta_calculations` | Per-wavelength **t1→t2** % change across matched pairs (band-order join; tidy long CSV). |
 | `matched_pairs_drift_analysis` | Cross-PICS drift: per-channel Theil–Sen slope of ΔR vs Δt, Kendall-τ + BH-FDR significance, and the drift-spectrum / per-channel figures. |
@@ -116,10 +118,29 @@ Then, for a chosen patch:
    is overlaid; a scene missing its radiance CSV simply has no bold-red curve
    (soft-skip, noted in the console).
 
-   *→ Manual step:* open the PDF, and in the worksheet set `keep=FALSE` (with a
-   `reason`: cloud / coverage / artifact / other) for any bad scene, then set
-   `reviewed=TRUE` in the top row. Verdicts are **opt-out** (default keep) and
-   preserved across re-runs.
+   Rendering is **cube-first with a lazy Earthdata login**: pages rebuild from the
+   cached pixel cubes when present (fully offline), and authentication is
+   triggered only if a scene must actually be streamed. `MAKE_PDF = False` skips
+   the PDF and only refreshes the worksheet.
+
+   *Batched alternative:* **`python scripts/run_PICS_allpatches_qc.py`** runs this
+   QC step for **every patch of a size** across the PICS in one pass (refreshing
+   all their worksheets, PDFs optional via `MAKE_PDF`). With cubes cached it
+   touches no network. Pairs naturally with the batched extractor.
+
+   *→ Enter verdicts one of two ways:*
+   - **Interactive (recommended):** **`python scripts/run_qc_review.py`** — a
+     pure-matplotlib reviewer that renders each scene from the cached cubes and
+     writes keep/remove verdicts straight to `qc.csv`. Mouse buttons *or* keyboard
+     (`k` keep, `r` remove, `1`–`4` remove-with-reason, ←/→ navigate, `v` mark the
+     patch reviewed, `q` quit); verdicts save on every action. Review one patch or
+     every patch of a size.
+   - **By hand:** open the PDF and in the worksheet set `keep=FALSE` (with a
+     `reason`: cloud / coverage / artifact / other) for any bad scene, then set
+     `reviewed=TRUE` in the top row.
+
+   Either way verdicts are **opt-out** (default keep), preserved across re-runs,
+   and gated: downstream steps refuse to run until `reviewed=TRUE`.
 
 5. **`python scripts/run_id_matched_pairs.py`**
    Pure **local** post-processor (no Earthdata): reads the geometry table,

@@ -441,7 +441,7 @@ def render_scene_figure(rfl: dict, obs: dict, *, mask: np.ndarray, bounds,
                         patch_id: str, granule_ur: str, acq_dt,
                         granule_poly=None, ncols: int = NCOLS,
                         draw_nadir: bool = False,
-                        spectra=None, acq_ts=None):
+                        spectra=None, acq_ts=None, fig=None):
     """Render one acquisition's multipanel QA/QC figure.
 
     Map panels (a grid ``ncols`` wide): RGB true-color, every MASK band (binary
@@ -481,6 +481,9 @@ def render_scene_figure(rfl: dict, obs: dict, *, mask: np.ndarray, bounds,
     acq_ts : str or None
         Acquisition timestamp (``YYYYMMDDThhmmss``) of this page's scene, used to
         pick out the bold-red curve in the spectra panels.
+    fig : matplotlib.figure.Figure or None
+        Existing figure to draw into (cleared first).  ``None`` creates a new one.
+        The interactive reviewer passes one figure and reuses it across scenes.
 
     Returns
     -------
@@ -535,7 +538,14 @@ def render_scene_figure(rfl: dict, obs: dict, *, mask: np.ndarray, bounds,
     # Layout: the map grid (nrows x ncols) sits on top; one extra full-width row
     # below holds the two spectra panels.  A GridSpec lets the spectra row span
     # the width while the map panels keep the square 4-per-row arrangement.
-    fig = plt.figure(figsize=(4 * ncols, 4 * nrows + 4.5))
+    # A caller may pass ``fig`` to redraw into an existing window (the interactive
+    # reviewer reuses one figure across scenes); it is cleared first.
+    figsize = (4 * ncols, 4 * nrows + 4.5)
+    if fig is None:
+        fig = plt.figure(figsize=figsize)
+    else:
+        fig.clf()
+        fig.set_size_inches(figsize)
     gs = fig.add_gridspec(nrows + 1, ncols,
                           height_ratios=[1] * nrows + [1.15])
     axes = np.array([fig.add_subplot(gs[r, c])
