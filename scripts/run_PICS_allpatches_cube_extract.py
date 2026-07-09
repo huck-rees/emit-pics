@@ -23,9 +23,17 @@ Only granule opens / lon-lat reads / KDTree builds are saved (they drop from
 ``O(#granules × #patches)`` to ``O(#granules)``); the windowed spectral reads are
 still per-patch, since each patch's pixels differ.
 
-PIXEL-CUBE CACHE SIZING: a 10 km patch cube is ~32 MB per product per
-acquisition.  Caching **all** patches × all scenes multiplies fast — estimate
-``#patches × #scenes × ~64 MB`` before enabling ``CACHE_PIXELS``.
+PIXEL-CUBE CACHE (``CACHE_PIXELS``, ON by default): caching is the whole point of
+the one full-band stream — it is what lets QC (``run_PICS_allpatches_qc.py`` /
+``run_qc_review.py``) and the later BRDF pass run **offline** from local NetCDF
+instead of re-streaming every scene.  A stats-only run (``CACHE_PIXELS=False``)
+keeps only the reduced per-channel/geometry CSVs and discards the pixels, so any
+later QC has to re-download the imagery scene by scene.
+
+SIZING: a 10 km patch cube is ~32 MB per product per acquisition.  Caching
+**all** patches × all scenes multiplies fast — estimate ``#patches × #scenes ×
+~64 MB`` (~55-70 GB for a 10 km Libya_4).  Turn ``CACHE_PIXELS`` off only when you
+are certain you will neither QC nor BRDF this PICS and want to spare the disk.
 
 Edit the user-configurable inputs below, then run::
 
@@ -41,7 +49,13 @@ from pathlib import Path
 PICS_ID    = "Libya_4"      # underscored site id (input + output file paths)
 PATCH_SIZE = "10"           # patch-size token (first field of patch_id, e.g. 10 km)
 
-CACHE_PIXELS    = False     # write the raw in-patch pixel cube per (patch, scene)
+CACHE_PIXELS    = True      # write the raw in-patch pixel cube per (patch, scene).
+                            # ON by default: this ONE full-band stream is what makes
+                            # QC and BRDF run offline afterwards. Set False only if you
+                            # are sure you will not QC/BRDF this PICS and want to spare
+                            # the disk (see PIXEL-CUBE CACHE SIZING above: ~55-70 GB for
+                            # a 10 km Libya_4). Streaming stats-only leaves nothing on
+                            # disk to render from, so QC would re-stream every scene.
 WANT_OBS        = True      # stream OBS geometry (SZA/VZA) for the geometry tables
 
 FILTER_AGG_FLAG = False     # True -> screen per-channel stats via MASK Aggregate Flag
