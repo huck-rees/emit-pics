@@ -184,18 +184,23 @@ def process_patch_cube(cube, patch_id):
 def _unit_outputs_exist(patch_id, ts):
     """True if this ``(patch, acquisition)`` already has outputs on disk (resume key).
 
-    A successfully *produced* unit writes its per-channel CSV(s) and — with
-    ``CACHE_PIXELS`` on (the default) — its pixel cube; a *screened* unit still
-    writes the cube (caching precedes the screening gate in ``process_patch_cube``).
-    Any one of those present means the unit completed a prior run and can be
-    skipped.  A unit that 403'd mid-stream wrote none of them, so it is not "done"
-    and gets retried.  (A genuinely empty "missing" unit also looks not-done and
-    gets a quick, network-cheap re-check — it has nothing to stream.)
+    The key must match what *this* run produces.  With ``CACHE_PIXELS`` on (the
+    default) that is the pixel **cube**, so the cube's ``.nc`` — and only it — is
+    the resume key: the per-channel CSVs are *not* sufficient evidence, because an
+    earlier stats-only pass (``CACHE_PIXELS=False``) writes those CSVs for every
+    unit while writing no cubes at all.  Counting the CSVs would falsely mark every
+    unit done and skip the very cubes this run exists to create.  A cube is written
+    before the screening gate in ``process_patch_cube``, so *screened* units also
+    have one; a unit that 403'd mid-stream has none and is correctly retried.
+
+    With ``CACHE_PIXELS`` off there is no cube to key on, so fall back to the
+    per-channel CSVs — the only durable artifact a stats-only run leaves.
     """
-    cube = CUBE_DIR / f"cube_{PICS_ID}_{patch_id}_{ts}.nc"
-    rfl  = RFL_DIR / f"{PICS_ID}_{patch_id}_{ts}_perchannel_rfl.csv"
-    rad  = RAD_DIR / f"{PICS_ID}_{patch_id}_{ts}_perchannel_rad.csv"
-    return cube.exists() or rfl.exists() or rad.exists()
+    if CACHE_PIXELS:
+        return (CUBE_DIR / f"cube_{PICS_ID}_{patch_id}_{ts}.nc").exists()
+    rfl = RFL_DIR / f"{PICS_ID}_{patch_id}_{ts}_perchannel_rfl.csv"
+    rad = RAD_DIR / f"{PICS_ID}_{patch_id}_{ts}_perchannel_rad.csv"
+    return rfl.exists() or rad.exists()
 
 
 def write_geometry_tables(geom_by_patch):
