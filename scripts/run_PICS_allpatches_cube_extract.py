@@ -35,6 +35,17 @@ SIZING: a 10 km patch cube is ~32 MB per product per acquisition.  Caching
 ~64 MB`` (~55-70 GB for a 10 km Libya_4).  Turn ``CACHE_PIXELS`` off only when you
 are certain you will neither QC nor BRDF this PICS and want to spare the disk.
 
+RESUME (``RESUME``, ON by default): a streaming run can leave a few
+``(patch, acquisition)`` units dropped by transient errors — most often a
+``403 Forbidden`` when a granule's time-limited pre-signed download URL expires
+mid-run.  With RESUME on, any unit whose outputs already exist on disk (its pixel
+cube and/or per-channel CSV — see :func:`_unit_outputs_exist`) is skipped, and an
+acquisition whose patches are *all* already done is skipped **before** its grid is
+opened, so no lon/lat is even streamed for it.  A re-run therefore re-streams only
+the stragglers.  The failed units wrote nothing, so they are correctly seen as
+not-done and retried; geometry tables are *merged* (not overwritten) so the
+skipped scenes' rows survive.  Set ``RESUME = False`` to force a full re-extract.
+
 Edit the user-configurable inputs below, then run::
 
     python scripts/run_PICS_allpatches_cube_extract.py
@@ -57,6 +68,12 @@ CACHE_PIXELS    = True      # write the raw in-patch pixel cube per (patch, scen
                             # a 10 km Libya_4). Streaming stats-only leaves nothing on
                             # disk to render from, so QC would re-stream every scene.
 WANT_OBS        = True      # stream OBS geometry (SZA/VZA) for the geometry tables
+
+RESUME          = True      # skip (patch, scene) units already written to disk, and
+                            # skip opening any acquisition whose patches are ALL done
+                            # (no lon/lat stream for it). Lets a re-run recover only the
+                            # units a prior run dropped to transient 403s / URL expiry.
+                            # Set False to force a full re-extract of every unit.
 
 FILTER_AGG_FLAG = False     # True -> screen per-channel stats via MASK Aggregate Flag
 MIN_VALID_FRAC  = 0.60      # min in-patch valid fraction (only if filtering)
@@ -164,17 +181,47 @@ def process_patch_cube(cube, patch_id):
     return ("produced" if n_written else "missing"), geom_record
 
 
+def _unit_outputs_exist(patch_id, ts):
+    """True if this ``(patch, acquisition)`` already has outputs on disk (resume key).
+
+    A successfully *produced* unit writes its per-channel CSV(s) and — with
+    ``CACHE_PIXELS`` on (the default) — its pixel cube; a *screened* unit still
+    writes the cube (caching precedes the screening gate in ``process_patch_cube``).
+    Any one of those present means the unit completed a prior run and can be
+    skipped.  A unit that 403'd mid-stream wrote none of them, so it is not "done"
+    and gets retried.  (A genuinely empty "missing" unit also looks not-done and
+    gets a quick, network-cheap re-check — it has nothing to stream.)
+    """
+    cube = CUBE_DIR / f"cube_{PICS_ID}_{patch_id}_{ts}.nc"
+    rfl  = RFL_DIR / f"{PICS_ID}_{patch_id}_{ts}_perchannel_rfl.csv"
+    rad  = RAD_DIR / f"{PICS_ID}_{patch_id}_{ts}_perchannel_rad.csv"
+    return cube.exists() or rfl.exists() or rad.exists()
+
+
 def write_geometry_tables(geom_by_patch):
-    """Write one per-scene geometry table per patch (matched-pairs input)."""
+    """Write one per-scene geometry table per patch (matched-pairs input).
+
+    Each patch's table is **merged** with any existing table on disk (keyed by
+    ``timestamp``, newly-processed rows win) before writing, so a RESUME run —
+    which only holds geometry for the scenes it actually reprocessed — augments the
+    prior run's tables rather than overwriting them with a subset.
+    """
     GEOM_DIR.mkdir(parents=True, exist_ok=True)
+    n = 0
     for pid, recs in sorted(geom_by_patch.items()):
         if not recs:
             continue
-        df = (pd.DataFrame(recs).drop(columns=["patch_id"])
-              .sort_values("datetime").reset_index(drop=True))
-        df.to_csv(GEOM_DIR / f"geometry_{PICS_ID}_{pid}.csv", index=False)
-    n = sum(1 for recs in geom_by_patch.values() if recs)
-    print(f"\nGeometry tables:    {n} patch table(s) -> {GEOM_DIR}")
+        new_df = pd.DataFrame(recs).drop(columns=["patch_id"])
+        out_path = GEOM_DIR / f"geometry_{PICS_ID}_{pid}.csv"
+        if out_path.exists():
+            df = pd.concat([pd.read_csv(out_path), new_df], ignore_index=True)
+            df = df.drop_duplicates(subset="timestamp", keep="last")
+        else:
+            df = new_df
+        df = df.sort_values("datetime").reset_index(drop=True)
+        df.to_csv(out_path, index=False)
+        n += 1
+    print(f"\nGeometry tables:    {n} patch table(s) merged/written -> {GEOM_DIR}")
 
 
 def amend_dict_geometry(dict_path, geom_records):
@@ -247,15 +294,27 @@ def main() -> None:
         print(f"Aggregate-Flag screening ON (min valid frac {MIN_VALID_FRAC:.0%})")
     if CACHE_PIXELS:
         print(f"Pixel-cube caching ON -> {CUBE_DIR}")
+    if RESUME:
+        print("RESUME ON -> skipping (patch, scene) units already on disk")
 
     # 4. One open per acquisition; extract every patch it covers.
     geom_by_patch = {pid: [] for pid in patch_ids}
-    n_produced = n_screened = n_missing = n_errored = 0
+    n_produced = n_screened = n_missing = n_errored = n_skipped = 0
 
     for k, acq in enumerate(acquisitions, 1):
         ts = acq["timestamp"]
         pids = patches_by_ts[ts]
-        print(f"\n[{k}/{len(acquisitions)}] {ts}  ({len(pids)} patch(es))")
+
+        # RESUME: process only the patches this acquisition still owes; a fully
+        # complete acquisition is skipped before its grid (lon/lat + KDTree) opens.
+        pending = [p for p in pids if not _unit_outputs_exist(p, ts)] if RESUME else pids
+        n_skipped += len(pids) - len(pending)
+        done_note = (f", {len(pids) - len(pending)} done, {len(pending)} to do"
+                     if RESUME and len(pending) != len(pids) else "")
+        print(f"\n[{k}/{len(acquisitions)}] {ts}  ({len(pids)} patch(es){done_note})")
+        if not pending:
+            print(f"  all {len(pids)} patch(es) already complete -> skipped (no stream)")
+            continue
 
         try:
             grid = open_acquisition_grid(
@@ -263,16 +322,16 @@ def main() -> None:
                 want_obs=WANT_OBS)
         except Exception as ex:
             print(f"  FAILED to open {ts}: {type(ex).__name__}: {ex} "
-                  f"-- {len(pids)} patch(es) dropped for this acquisition")
-            n_errored += len(pids)
+                  f"-- {len(pending)} patch(es) dropped for this acquisition")
+            n_errored += len(pending)
             continue
         if grid is None:
-            print(f"  skipped {ts}: no product available -> {len(pids)} patch(es)")
-            n_missing += len(pids)
+            print(f"  skipped {ts}: no product available -> {len(pending)} patch(es)")
+            n_missing += len(pending)
             continue
 
         try:
-            for pid in pids:
+            for pid in pending:
                 try:
                     cube = extract_patch_from_grid(grid, patch_geoms[pid], patch_id=pid)
                     status, geom_record = process_patch_cube(cube, pid)
@@ -288,8 +347,8 @@ def main() -> None:
                     n_screened += 1
                 else:
                     n_missing += 1
-            print(f"  done {ts}: {sum(len(geom_by_patch[p]) for p in pids)} "
-                  f"geometry row(s) so far across its patches")
+            print(f"  done {ts}: {sum(len(geom_by_patch[p]) for p in pending)} "
+                  f"geometry row(s) collected this run across its patches")
         finally:
             close_grid(grid)
 
@@ -302,16 +361,19 @@ def main() -> None:
         print("\nNo OBS geometry collected; geometry tables not written.")
 
     # 6. Completeness summary (counted in patch × acquisition units).
-    total = n_produced + n_screened + n_missing + n_errored
+    total = n_produced + n_screened + n_missing + n_errored + n_skipped
     print("\n--- Completeness (patch x acquisition units) ---")
     print(f"  scheduled:                {total}")
+    if RESUME:
+        print(f"  skipped (already done):   {n_skipped}")
     print(f"  produced per-channel:     {n_produced}")
     print(f"  dropped by screening:     {n_screened}")
     print(f"  dropped by errors:        {n_errored}")
     print(f"  no output (missing/empty):{n_missing}")
     if n_errored:
         print(f"  WARNING: {n_errored} (patch x acquisition) dropped by errors "
-              f"after retries -- run is INCOMPLETE; consider re-running.")
+              f"after retries -- run is INCOMPLETE. Re-run to recover them; RESUME "
+              f"will skip the {n_skipped + n_produced} unit(s) already on disk.")
 
 
 if __name__ == "__main__":
