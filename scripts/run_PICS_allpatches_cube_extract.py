@@ -106,6 +106,7 @@ import pandas as pd
 
 from emit_pics.id_matched_pairs import (
     STAT_COLS,
+    acq_datetime,
     acq_timestamp,
     load_patch_geom_4326,
     sniff_delimiter,
@@ -116,6 +117,7 @@ from emit_pics.single_patch_cube_extract import (
     channel_stats_from_cube,
     geometry_stats_from_cube,
     mask_summaries_from_cube,
+    read_cube_netcdf,
     write_cube_netcdf,
 )
 from emit_pics.PICS_allpatches_cube_extract import (
@@ -203,6 +205,39 @@ def _unit_outputs_exist(patch_id, ts):
     return rfl.exists() or rad.exists()
 
 
+def geom_record_from_cube_file(patch_id, ts):
+    """Rebuild a unit's per-scene geometry record from its cached cube (no stream).
+
+    Lets a RESUME run that SKIPS an already-cached unit still contribute that
+    unit's geometry row, so the end-of-run geometry tables and dict amendment are
+    rebuilt over the **full** set of cubes on disk — not just the freshly-streamed
+    ones.  Without this a resume (all units cached) would collect zero geometry and
+    leave previously-failed scenes permanently absent from the tables.  Returns
+    ``None`` if the cube is missing or carries no OBS geometry (e.g. cached with
+    ``WANT_OBS=False``).
+    """
+    cube_path = CUBE_DIR / f"cube_{PICS_ID}_{patch_id}_{ts}.nc"
+    if not cube_path.exists():
+        return None
+    with read_cube_netcdf(cube_path) as ds:
+        if "sza" not in ds or "vza" not in ds:
+            return None
+        proxy = {"sza": ds["sza"].values, "vza": ds["vza"].values,
+                 "n_pixels": int(ds.sizes["pixel"])}
+        geom = geometry_stats_from_cube(proxy)
+        if geom is None:
+            return None
+        rad_ur = str(ds.attrs.get("rad_ur", ""))
+        return {
+            "patch_id": patch_id,
+            "scene_id": rad_ur, "granule_ur": rad_ur,
+            "timestamp": str(ds.attrs.get("timestamp", ts)),
+            "datetime": acq_datetime(rad_ur),
+            "has_rfl": "reflectance" in ds,
+            **geom,
+        }
+
+
 def write_geometry_tables(geom_by_patch):
     """Write one per-scene geometry table per patch (matched-pairs input).
 
@@ -223,7 +258,12 @@ def write_geometry_tables(geom_by_patch):
             df = df.drop_duplicates(subset="timestamp", keep="last")
         else:
             df = new_df
-        df = df.sort_values("datetime").reset_index(drop=True)
+        # Sort by the canonical ``timestamp`` ("YYYYMMDDThhmmss"): it is a
+        # homogeneous string in both freshly-built rows and rows read back from an
+        # existing table, and lexically co-monotonic with ``datetime``.  Sorting by
+        # ``datetime`` after a merge can mix Timestamp (new) and str (CSV) values,
+        # which pandas cannot order ("'<' not supported between Timestamp and str").
+        df = df.sort_values("timestamp").reset_index(drop=True)
         df.to_csv(out_path, index=False)
         n += 1
     print(f"\nGeometry tables:    {n} patch table(s) merged/written -> {GEOM_DIR}")
@@ -313,12 +353,20 @@ def main() -> None:
         # RESUME: process only the patches this acquisition still owes; a fully
         # complete acquisition is skipped before its grid (lon/lat + KDTree) opens.
         pending = [p for p in pids if not _unit_outputs_exist(p, ts)] if RESUME else pids
-        n_skipped += len(pids) - len(pending)
-        done_note = (f", {len(pids) - len(pending)} done, {len(pending)} to do"
-                     if RESUME and len(pending) != len(pids) else "")
+        skipped = [p for p in pids if p not in pending]
+        n_skipped += len(skipped)
+        # Recover geometry for the skipped (already-cached) units from their cubes,
+        # so the end-of-run tables/dict are rebuilt over ALL cubes, not just streams.
+        for p in skipped:
+            rec = geom_record_from_cube_file(p, ts)
+            if rec is not None:
+                geom_by_patch[p].append(rec)
+        done_note = (f", {len(skipped)} done, {len(pending)} to do"
+                     if RESUME and skipped else "")
         print(f"\n[{k}/{len(acquisitions)}] {ts}  ({len(pids)} patch(es){done_note})")
         if not pending:
-            print(f"  all {len(pids)} patch(es) already complete -> skipped (no stream)")
+            print(f"  all {len(pids)} patch(es) already complete -> skipped "
+                  f"(no stream; geometry recovered from cubes)")
             continue
 
         try:
