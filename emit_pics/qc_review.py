@@ -43,7 +43,7 @@ from emit_pics.single_patch_cube_extract import (
     cube_to_render_inputs,
     read_cube_netcdf,
 )
-from emit_pics.display_qc_visuals import render_scene_figure
+from emit_pics.display_qc_visuals import NCOLS, render_scene_figure
 from emit_pics.qc_gate import QC_REASONS, QC_SHEET_COLS, build_qc_sheet
 from emit_pics.qc_report import default_qc_config, load_spectra_context
 
@@ -96,6 +96,42 @@ def _set_window_geometry(manager, x, y, w, h):
         pass
 
 
+def _move_window(manager, x, y):
+    """Move a figure's window without changing its size (TkAgg / Qt); no-op else."""
+    win = getattr(manager, "window", None)
+    if win is None:
+        return
+    x, y = int(x), int(y)
+    try:
+        if hasattr(win, "wm_geometry"):                      # TkAgg: "+x+y" moves only
+            win.wm_geometry(f"+{x}+{y}")
+        elif hasattr(win, "move"):                           # Qt
+            win.move(x, y)
+    except Exception:
+        pass
+
+
+def _best_ncols(n_panels, avail_w, avail_h, base):
+    """Column count that lets the panel grid fill the screen with the biggest panels.
+
+    The map grid is ``ncols`` wide over ``ceil(n_panels/ncols)`` rows, plus one
+    full-width spectra row; :func:`render_scene_figure` sizes it ``(4*ncols,
+    4*rows + 4.5)`` inches.  Fitting that (fixed-aspect) block into the available
+    screen area, the achievable scale is ``min(avail_w/w_in, avail_h/h_in)``.
+    Because the layout is tall, height usually binds, so *more* columns (fewer
+    rows) yields a larger scale — i.e. bigger panels.  Return the ``ncols >= base``
+    that maximizes the scale.
+    """
+    best, best_scale = base, -1.0
+    for c in range(base, max(base, n_panels) + 1):
+        rows = -(-n_panels // c)                # ceil division
+        w_in, h_in = 4 * c, 4 * rows + 4.5
+        scale = min(avail_w / w_in, avail_h / h_in)
+        if scale > best_scale:
+            best, best_scale = c, scale
+    return best
+
+
 class QCReviewer:
     """Stateful reviewer over one or more patches of a PICS."""
 
@@ -109,6 +145,8 @@ class QCReviewer:
         self.i = 0
         self.reason = QC_REASONS[0]
         self._n_no_cube = 0
+        self._ncols = None      # chosen at fit time to fill the screen (None = default)
+        self._fitted = False    # once True, redraws stop re-snapping the viewer size
 
         for pid in patch_ids:
             self._load_patch(repo_root, pid)
@@ -186,40 +224,84 @@ class QCReviewer:
             f.canvas.mpl_connect("key_press_event", self._on_key)
 
     # ---- window placement ---------------------------------------------
-    def _place_windows(self) -> None:
-        """Tile the two windows to fit the screen without overlapping.
+    def _infer_n_panels(self):
+        """Total QC panel count (RGB + every MASK band + SZA + VZA + context).
 
-        The viewer fills the top of the screen; the controls dock in a fixed
-        strip along the bottom.  Sizing to the screen guarantees the viewer fits
-        (no manual resize), and the fixed tiling keeps the controls from landing
-        on top of it.  Best-effort and backend-detected; a no-op if the window
-        geometry cannot be read (the reviewer still runs, unplaced).
+        Read from the first available cube's MASK bands; ``None`` if no cube can
+        be read (then column selection falls back to the render default).
         """
-        area = _screen_workarea(self.viewer_fig.canvas.manager)
+        for pid, ts in self.items:
+            cp = self.patches[pid]["cfg"].cube_dir / f"cube_{self.pics_id}_{pid}_{ts}.nc"
+            if not cp.exists():
+                continue
+            try:
+                with read_cube_netcdf(cp) as ds:
+                    labels = ds.attrs.get("mask_labels")
+                    n_mask = (len(labels) if labels is not None
+                              else int(ds.sizes.get("mask_band", 0)))
+                return 1 + n_mask + 3      # RGB + masks + SZA + VZA + context
+            except Exception:
+                continue
+        return None
+
+    def _place_windows(self) -> bool:
+        """Fit the viewer to the screen (proportionally) and dock the controls.
+
+        Rather than stretch the viewer window to the screen's aspect ratio — which
+        distorts the fixed-aspect panel grid and shrinks the map/mask panels — this
+        (a) widens the column count so the tall grid uses the screen's width, then
+        (b) scales the *whole* figure down by lowering its DPI so it fits without
+        changing panel proportions.  The viewer is pinned top-left; the controls
+        dock in a fixed strip just below it, so the two never overlap.  Returns
+        ``True`` once placed (window realized), ``False`` to retry later.
+        """
+        vmgr = self.viewer_fig.canvas.manager
+        area = _screen_workarea(vmgr)
         if area is None:
-            return
+            return False
         sw, sh = area
-        ctrl_h = min(300, max(200, int(sh * 0.22)))   # bottom strip for controls
-        ctrl_w = min(sw, 1000)
-        _set_window_geometry(self.viewer_fig.canvas.manager, 0, 0, sw, sh - ctrl_h)
-        _set_window_geometry(self.ctrl_fig.canvas.manager, 0, sh - ctrl_h,
-                             ctrl_w, ctrl_h)
+        ctrl_h = min(300, max(200, int(sh * 0.22)))     # bottom strip for controls
+        avail_h = max(200, sh - ctrl_h)
+
+        # (a) Pick the column count that best fills the screen, and re-render at it.
+        n_panels = self._infer_n_panels()
+        if n_panels:
+            best = _best_ncols(n_panels, sw, avail_h, NCOLS)
+            if best != (self._ncols or NCOLS):
+                self._ncols = best
+                self._render()      # re-lay out at the new width (resize=True still)
+
+        # (b) Shrink to fit by DPI (aspect preserved), never enlarge.
+        w_in, h_in = self.viewer_fig.get_size_inches()
+        dpi = self.viewer_fig.get_dpi()
+        scale = min(sw / (w_in * dpi), avail_h / (h_in * dpi), 1.0)
+        if scale < 1.0:
+            self.viewer_fig.set_dpi(max(30.0, dpi * scale))
+            self.viewer_fig.canvas.draw_idle()
+
+        # Pin viewer top-left (keep its fitted size); dock controls just below it.
+        vh = int(round(self.viewer_fig.get_size_inches()[1] * self.viewer_fig.get_dpi()))
+        _move_window(vmgr, 0, 0)
+        _set_window_geometry(self.ctrl_fig.canvas.manager,
+                             0, min(vh, avail_h), min(sw, 1000), ctrl_h)
+        self._fitted = True         # freeze size for subsequent scene redraws
+        return True
 
     def _install_one_shot_placement(self) -> None:
         """Place the windows once, as soon as a backend window exists.
 
         Managers usually exist before ``plt.show`` (so we try immediately), but
-        some backends realize the window only on first draw — hence the one-shot
-        ``draw_event`` fallback.  It fires exactly once, so later per-scene redraws
-        never re-snap windows the user has since nudged.
+        some backends realize the window only on first draw — hence the
+        ``draw_event`` fallback, which retries until placement succeeds and then
+        stops, so later per-scene redraws never re-snap a window the user nudged.
         """
         state = {"done": False}
 
         def _cb(_evt):
             if state["done"]:
                 return
-            state["done"] = True
-            self._place_windows()
+            if self._place_windows():
+                state["done"] = True
 
         for f in (self.viewer_fig, self.ctrl_fig):
             f.canvas.mpl_connect("draw_event", _cb)
@@ -242,7 +324,7 @@ class QCReviewer:
                         granule_ur=str(ds.attrs.get("rfl_ur", "")),
                         acq_dt=P["dt_by_ts"].get(ts), draw_nadir=False,
                         spectra=P["spectra"], acq_ts=ts, fig=self.viewer_fig,
-                        resize=False)
+                        ncols=(self._ncols or NCOLS), resize=not self._fitted)
                     rendered = True
             finally:
                 ds.close()
