@@ -441,7 +441,7 @@ def render_scene_figure(rfl: dict, obs: dict, *, mask: np.ndarray, bounds,
                         patch_id: str, granule_ur: str, acq_dt,
                         granule_poly=None, ncols: int = NCOLS,
                         draw_nadir: bool = False,
-                        spectra=None, acq_ts=None, fig=None):
+                        spectra=None, acq_ts=None, fig=None, resize=True):
     """Render one acquisition's multipanel QA/QC figure.
 
     Map panels (a grid ``ncols`` wide): RGB true-color, every MASK band (binary
@@ -484,6 +484,11 @@ def render_scene_figure(rfl: dict, obs: dict, *, mask: np.ndarray, bounds,
     fig : matplotlib.figure.Figure or None
         Existing figure to draw into (cleared first).  ``None`` creates a new one.
         The interactive reviewer passes one figure and reuses it across scenes.
+    resize : bool
+        When reusing a passed ``fig``, whether to re-apply the computed figure
+        size on this redraw.  ``True`` (default, the PDF path) keeps page sizes
+        consistent; ``False`` (the interactive reviewer) preserves a window the
+        user has resized or maximized instead of snapping it back each scene.
 
     Returns
     -------
@@ -545,7 +550,13 @@ def render_scene_figure(rfl: dict, obs: dict, *, mask: np.ndarray, bounds,
         fig = plt.figure(figsize=figsize)
     else:
         fig.clf()
-        fig.set_size_inches(figsize)
+        # Re-applying the fixed figsize on every redraw fights an interactive
+        # caller that has sized/maximized its window (the QC reviewer): each new
+        # scene would snap the window back to `figsize` and overflow the monitor.
+        # `resize=False` keeps the reused window's current size; the PDF path
+        # (default True) still gets consistent page dimensions.
+        if resize:
+            fig.set_size_inches(figsize)
     gs = fig.add_gridspec(nrows + 1, ncols,
                           height_ratios=[1] * nrows + [1.15])
     axes = np.array([fig.add_subplot(gs[r, c])

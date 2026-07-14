@@ -8,11 +8,16 @@ pixel cubes** (offline), and attaches Keep/Remove controls that update the
 per-patch worksheet ``data/qc/{PICS}_{PATCH}_qc.csv`` live via the same
 non-destructive schema :mod:`emit_pics.qc_gate` defines.
 
-Two windows:
+Two windows, auto-tiled to the screen on launch (viewer filling the top, controls
+docked in a fixed strip along the bottom) so they open fitted and non-overlapping
+and stay put — the viewer no longer snaps back to a fixed size on each new scene:
 
 * **viewer** — the QC multipanel, redrawn in place per scene (one reused figure);
 * **controls** — persistent Keep / Remove / Prev / Next / Reviewed / Quit buttons,
   a reason picker, and a status readout.
+
+Placement is best-effort and backend-detected (TkAgg / Qt); on a backend whose
+window geometry cannot be set it simply opens at the toolkit's default position.
 
 Every action is available by mouse *and* keyboard (keyboard is far faster for bulk
 review):
@@ -46,6 +51,49 @@ from emit_pics.qc_report import default_qc_config, load_spectra_context
 def _write_sheet(df: pd.DataFrame, qc_path) -> None:
     """Persist the worksheet in the canonical column order (crash-safe write)."""
     df[QC_SHEET_COLS].to_csv(qc_path, index=False)
+
+
+# ---------------------------------------------------------------------------
+# Cross-backend window placement (TkAgg / Qt).  Best-effort: any backend whose
+# window API is unavailable silently no-ops, so the reviewer still runs — the
+# windows just open at the toolkit's default positions.
+# ---------------------------------------------------------------------------
+def _screen_workarea(manager):
+    """Screen ``(width, height)`` in pixels for a figure's window, or ``None``."""
+    win = getattr(manager, "window", None)
+    if win is None:
+        return None
+    if hasattr(win, "winfo_screenwidth"):                    # TkAgg
+        try:
+            return int(win.winfo_screenwidth()), int(win.winfo_screenheight())
+        except Exception:
+            return None
+    try:                                                     # Qt (5/6)
+        screen = win.screen() if hasattr(win, "screen") else None
+        if screen is not None:
+            ag = screen.availableGeometry()
+            return int(ag.width()), int(ag.height())
+    except Exception:
+        pass
+    return None
+
+
+def _set_window_geometry(manager, x, y, w, h):
+    """Position+size a figure's top-level window (TkAgg / Qt); no-op otherwise."""
+    win = getattr(manager, "window", None)
+    if win is None:
+        return
+    x, y, w, h = int(x), int(y), int(w), int(h)
+    try:
+        if hasattr(win, "wm_geometry"):                      # TkAgg
+            win.wm_geometry(f"{w}x{h}+{x}+{y}")
+        elif hasattr(win, "setGeometry"):                    # Qt
+            win.setGeometry(x, y, w, h)
+        elif hasattr(win, "move") and hasattr(win, "resize"):
+            win.move(x, y)
+            win.resize(w, h)
+    except Exception:
+        pass
 
 
 class QCReviewer:
@@ -137,6 +185,46 @@ class QCReviewer:
         for f in (self.viewer_fig, self.ctrl_fig):
             f.canvas.mpl_connect("key_press_event", self._on_key)
 
+    # ---- window placement ---------------------------------------------
+    def _place_windows(self) -> None:
+        """Tile the two windows to fit the screen without overlapping.
+
+        The viewer fills the top of the screen; the controls dock in a fixed
+        strip along the bottom.  Sizing to the screen guarantees the viewer fits
+        (no manual resize), and the fixed tiling keeps the controls from landing
+        on top of it.  Best-effort and backend-detected; a no-op if the window
+        geometry cannot be read (the reviewer still runs, unplaced).
+        """
+        area = _screen_workarea(self.viewer_fig.canvas.manager)
+        if area is None:
+            return
+        sw, sh = area
+        ctrl_h = min(300, max(200, int(sh * 0.22)))   # bottom strip for controls
+        ctrl_w = min(sw, 1000)
+        _set_window_geometry(self.viewer_fig.canvas.manager, 0, 0, sw, sh - ctrl_h)
+        _set_window_geometry(self.ctrl_fig.canvas.manager, 0, sh - ctrl_h,
+                             ctrl_w, ctrl_h)
+
+    def _install_one_shot_placement(self) -> None:
+        """Place the windows once, as soon as a backend window exists.
+
+        Managers usually exist before ``plt.show`` (so we try immediately), but
+        some backends realize the window only on first draw — hence the one-shot
+        ``draw_event`` fallback.  It fires exactly once, so later per-scene redraws
+        never re-snap windows the user has since nudged.
+        """
+        state = {"done": False}
+
+        def _cb(_evt):
+            if state["done"]:
+                return
+            state["done"] = True
+            self._place_windows()
+
+        for f in (self.viewer_fig, self.ctrl_fig):
+            f.canvas.mpl_connect("draw_event", _cb)
+        self._place_windows()   # eager attempt (usually enough)
+
     # ---- rendering -----------------------------------------------------
     def _render(self) -> None:
         pid, ts, P = self._cur()
@@ -153,7 +241,8 @@ class QCReviewer:
                         granule_poly=inp["granule_poly"], patch_id=pid,
                         granule_ur=str(ds.attrs.get("rfl_ur", "")),
                         acq_dt=P["dt_by_ts"].get(ts), draw_nadir=False,
-                        spectra=P["spectra"], acq_ts=ts, fig=self.viewer_fig)
+                        spectra=P["spectra"], acq_ts=ts, fig=self.viewer_fig,
+                        resize=False)
                     rendered = True
             finally:
                 ds.close()
@@ -272,6 +361,7 @@ class QCReviewer:
     def run(self):
         self._build_ui()
         self._render()
+        self._install_one_shot_placement()
         print("Interactive QC review — keys:")
         print("  k=keep  r=remove  1-4=remove w/ reason  <-/->=prev/next  "
               "v=mark patch reviewed  q=quit")
