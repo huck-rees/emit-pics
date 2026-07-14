@@ -27,6 +27,13 @@ review):
     space      next                       v          mark this patch reviewed
     q / esc    save & quit
 
+When several patches are reviewed in one session (the ``run_PICS_allpatches_qc_review``
+runner), leaving a patch that is **not yet marked reviewed** arms a one-key confirm
+gate rather than rolling straight into the next patch: press ``v`` to mark it
+reviewed and continue, the forward key again to skip anyway, or the back key to
+return.  Quitting with any patch still unreviewed asks for the same confirmation.
+This keeps a distracted reviewer from forgetting to mark a finished patch.
+
 Verdicts are written to the worksheet immediately on each action (crash-safe), so
 there is no explicit "save".  A scene with no cached cube shows a placeholder (you
 can still mark it, but re-run extraction with ``CACHE_PIXELS=True`` to see it).
@@ -147,6 +154,9 @@ class QCReviewer:
         self._n_no_cube = 0
         self._ncols = None      # chosen at fit time to fill the screen (None = default)
         self._fitted = False    # once True, redraws stop re-snapping the viewer size
+        self._visited = set()       # (pid, ts) scenes actually opened this session
+        self._pending_cross = False  # armed patch-boundary gate (confirm to skip)
+        self._confirm_quit = False   # armed quit gate (unreviewed patches remain)
 
         for pid in patch_ids:
             self._load_patch(repo_root, pid)
@@ -309,7 +319,9 @@ class QCReviewer:
 
     # ---- rendering -----------------------------------------------------
     def _render(self) -> None:
+        self._confirm_quit = False          # any redraw clears a pending quit gate
         pid, ts, P = self._cur()
+        self._visited.add((pid, ts))
         cube_path = P["cfg"].cube_dir / f"cube_{self.pics_id}_{pid}_{ts}.nc"
         rendered = False
         if cube_path.exists():
@@ -360,14 +372,20 @@ class QCReviewer:
         j, n = pts.index(ts), len(pts)
         n_removed = int((df["keep"].astype(str).str.upper() == "FALSE").sum())
         verdict = "KEEP" if keep else f"REMOVE({reason})"
+        n_pr = sum(self._patch_reviewed(p) for p in self.patches)
+        unseen = self._unseen_in_patch(pid)
+        gate = "\n** GATE: confirm to leave unreviewed patch **" if self._pending_cross else ""
         self.status.set_text(
             f"patch {pid}\n"
             f"scene {j + 1}/{n}   [{self.i + 1}/{len(self.items)} overall]\n"
             f"{ts}\n"
             f"verdict : {verdict}\n"
             f"removed in patch : {n_removed}\n"
-            f"reviewed : {'YES' if reviewed else 'no'}\n"
-            f"reason picker : {self.reason}")
+            f"reviewed : {'YES' if reviewed else 'no'}   "
+            f"(patches {n_pr}/{len(self.patches)})\n"
+            f"unopened in patch : {unseen}\n"
+            f"reason picker : {self.reason}"
+            f"{gate}")
         self.ctrl_fig.canvas.draw_idle()
         try:
             self.viewer_fig.canvas.manager.set_window_title(
@@ -403,23 +421,105 @@ class QCReviewer:
         pid, _, P = self._cur()
         P["df"].loc[P["df"].index[0], "reviewed"] = "TRUE"
         _write_sheet(P["df"], P["qc_path"])
-        self._update_status()
         print(f"  patch {pid} marked reviewed.")
+        if self._pending_cross:
+            # 'v' at an armed boundary marks this patch, then proceeds into the next.
+            self._pending_cross = False
+            self.i = min(self.i + 1, len(self.items) - 1)
+            self._render()
+        elif self._confirm_quit:
+            self._confirm_quit = False
+            self._render()          # wipe the quit banner, stay on this scene
+        else:
+            self._update_status()
 
-    # ---- navigation ----------------------------------------------------
-    def _advance(self):
-        self.i = min(self.i + 1, len(self.items) - 1)
+    # ---- navigation & patch-boundary gate ------------------------------
+    def _patch_reviewed(self, pid) -> bool:
+        """True if patch *pid*'s worksheet has ``reviewed=TRUE`` in its top row."""
+        df = self.patches[pid]["df"]
+        return str(df.loc[df.index[0], "reviewed"]).upper() == "TRUE"
+
+    def _unseen_in_patch(self, pid) -> int:
+        """Count of *pid*'s scenes never opened this session (distracted-skip signal)."""
+        return sum((pid, ts) not in self._visited
+                   for ts in self.patches[pid]["df"]["scene_ts"])
+
+    def _at_patch_boundary(self) -> bool:
+        """True when the next item belongs to a different patch than the current."""
+        if self.i >= len(self.items) - 1:
+            return False
+        return self.items[self.i + 1][0] != self.items[self.i][0]
+
+    def _go_next(self) -> None:
+        """Advance one scene, gating a crossing into a not-yet-reviewed patch.
+
+        Crossing out of an unreviewed patch arms a confirm gate instead of moving:
+        the next forward action (or ``v`` to mark reviewed) then proceeds, so a
+        distracted reviewer cannot roll into the following patch having silently
+        skipped marking this one.  Same-patch steps, and crossings out of an
+        already-reviewed patch, are never gated.
+        """
+        if self.i >= len(self.items) - 1:
+            return                                   # last scene overall; nothing ahead
+        cur_pid = self.items[self.i][0]
+        if self._at_patch_boundary() and not self._patch_reviewed(cur_pid):
+            if not self._pending_cross:
+                self._pending_cross = True           # arm the gate; do NOT move yet
+                self._draw_gate_banner(cur_pid)
+                return
+            self._pending_cross = False              # second forward action: honor skip
+        else:
+            self._pending_cross = False
+        self.i += 1
         self._render()
+
+    def _advance(self):
+        self._go_next()
 
     def _next(self):
-        self.i = min(self.i + 1, len(self.items) - 1)
-        self._render()
+        self._go_next()
 
     def _prev(self):
+        self._pending_cross = False                  # backing up cancels the gate
         self.i = max(self.i - 1, 0)
         self._render()
 
+    def _draw_gate_banner(self, pid) -> None:
+        """Overlay a blocking review-gate notice on the viewer (cleared on next redraw)."""
+        unseen = self._unseen_in_patch(pid)
+        seen_note = f"{unseen} scene(s) never opened" if unseen else "all scenes opened"
+        self.viewer_fig.text(
+            0.5, 0.5,
+            f"⚠  Patch {pid} is NOT marked reviewed\n({seen_note})\n\n"
+            f"v = mark reviewed & continue     → = skip anyway     "
+            f"← = go back",
+            ha="center", va="center", fontsize=15, color="#b30000",
+            fontweight="bold", zorder=10,
+            bbox=dict(boxstyle="round,pad=0.8", facecolor="#fff3cd",
+                      edgecolor="#b30000", alpha=0.97))
+        self.viewer_fig.canvas.draw_idle()
+        self._update_status()
+        print(f"  ** patch {pid} not marked reviewed -- press v to mark, "
+              f"-> to skip anyway, <- to go back.")
+
     def _quit(self):
+        unreviewed = [pid for pid in self.patches if not self._patch_reviewed(pid)]
+        if unreviewed and not self._confirm_quit:
+            self._confirm_quit = True
+            self.viewer_fig.text(
+                0.5, 0.5,
+                f"⚠  {len(unreviewed)} patch(es) NOT marked reviewed:\n"
+                f"{', '.join(unreviewed)}\n\n"
+                f"q = quit anyway     v = mark current reviewed     "
+                f"any nav = keep reviewing",
+                ha="center", va="center", fontsize=15, color="#b30000",
+                fontweight="bold", zorder=10,
+                bbox=dict(boxstyle="round,pad=0.8", facecolor="#fff3cd",
+                          edgecolor="#b30000", alpha=0.97))
+            self.viewer_fig.canvas.draw_idle()
+            print(f"  ** {len(unreviewed)} patch(es) not marked reviewed: "
+                  f"{unreviewed}. Press q again to quit anyway.")
+            return
         plt.close("all")
 
     def _on_key(self, event):
@@ -452,8 +552,10 @@ class QCReviewer:
                   f"placeholders.)")
         plt.show(block=True)
 
-        reviewed = [pid for pid, P in self.patches.items()
-                    if str(P["df"].loc[P["df"].index[0], "reviewed"]).upper() == "TRUE"]
+        reviewed = [pid for pid in self.patches if self._patch_reviewed(pid)]
+        unreviewed = [pid for pid in self.patches if pid not in reviewed]
         print(f"\nDone. {len(reviewed)}/{len(self.patches)} patch(es) marked "
               f"reviewed: {reviewed if reviewed else '(none)'}")
+        if unreviewed:
+            print(f"  NOT marked reviewed (re-run to finish): {unreviewed}")
         print("Verdicts saved to the per-patch worksheets under data/qc/.")
