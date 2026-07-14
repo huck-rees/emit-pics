@@ -4,7 +4,7 @@
 Renders the multipanel QC figure for each scene **from the cached pixel cubes**
 (offline) and lets you enter keep/remove verdicts that are written straight to the
 per-patch worksheets ``data/qc/{PICS}_{PATCH}_qc.csv`` — no hand-editing.  It is
-the interactive alternative to inspecting the PDFs from ``run_PICS_allpatches_qc.py``.
+the interactive alternative to inspecting the PDFs from ``run_PICS_allpatches_qc_products.py``.
 
 Review one patch (set ``PATCH_ID``) or every patch of a size (set
 ``PATCH_ID = None`` and pick ``PATCH_SIZE``).

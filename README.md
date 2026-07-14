@@ -100,7 +100,7 @@ Then, for a chosen patch:
    spectral reads stay per-patch. Prefer it when processing a whole size at once;
    use the single-patch runner for one-off patches or re-runs.
 
-4. **`python scripts/run_display_qc_visuals.py`**
+4. **`python scripts/run_single_patch_qc_products.py`**
    Per-scene QA/QC snapshot PDF for one patch — each page has the map panels
    (RGB, every MASK band, SZA/VZA, footprint context) **and**, below them, two
    adjacent spectra panels (reflectance | radiance) overlaying every scene that
@@ -123,7 +123,7 @@ Then, for a chosen patch:
    triggered only if a scene must actually be streamed. `MAKE_PDF = False` skips
    the PDF and only refreshes the worksheet.
 
-   *Batched alternative:* **`python scripts/run_PICS_allpatches_qc.py`** runs this
+   *Batched alternative:* **`python scripts/run_PICS_allpatches_qc_products.py`** runs this
    QC step for **every patch of a size** across the PICS in one pass (refreshing
    all their worksheets, PDFs optional via `MAKE_PDF`). With cubes cached it
    touches no network. Pairs naturally with the batched extractor.

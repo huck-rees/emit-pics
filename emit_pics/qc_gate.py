@@ -10,7 +10,7 @@ Two halves live here, both pure (no ``sys.exit``; the gate raises
 
 * :func:`build_qc_sheet` — create/refresh ``data/qc/{PICS}_{PATCH}_qc.csv`` from
   the per-scene geometry table (co-located with inspection, called by
-  ``run_display_qc_visuals``). Non-destructive: existing verdicts are preserved on
+  ``run_single_patch_qc_products``). Non-destructive: existing verdicts are preserved on
   refresh; newly appearing scenes are appended as ``keep=TRUE``.
 * :func:`apply_qc_filter` — drop ``keep=FALSE`` scenes wherever the geometry
   table is consumed (``run_id_matched_pairs``, and so, transitively, the delta
@@ -180,7 +180,7 @@ def apply_qc_filter(scenes: pd.DataFrame, qc_path, *,
         if require_review:
             raise QCReviewRequired(
                 f"QC worksheet not found: {qc_path}\n"
-                "Run scripts/run_display_qc_visuals.py to create it, inspect the "
+                "Run scripts/run_single_patch_qc_products.py to create it, inspect the "
                 "PDF, mark bad scenes (keep=FALSE), and set reviewed=TRUE in the "
                 "top row. Set REQUIRE_QC_REVIEW=False to bypass the gate."
             )

@@ -19,7 +19,7 @@ Outputs (repo-relative)::
     figures/spectra/radiance/{PICS}_{PATCH}_{stat}_rad_spectra.png
 
 Run ``run_single_patch_cube_extract.py`` (per-channel CSVs + geometry table) and complete the
-manual QC step (``run_display_qc_visuals.py`` -> mark the worksheet reviewed) first,
+manual QC step (``run_single_patch_qc_products.py`` -> mark the worksheet reviewed) first,
 then edit the inputs below and run::
 
     python scripts/run_display_spectra.py

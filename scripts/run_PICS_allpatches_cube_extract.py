@@ -24,7 +24,7 @@ Only granule opens / lon-lat reads / KDTree builds are saved (they drop from
 still per-patch, since each patch's pixels differ.
 
 PIXEL-CUBE CACHE (``CACHE_PIXELS``, ON by default): caching is the whole point of
-the one full-band stream — it is what lets QC (``run_PICS_allpatches_qc.py`` /
+the one full-band stream — it is what lets QC (``run_PICS_allpatches_qc_products.py`` /
 ``run_qc_review.py``) and the later BRDF pass run **offline** from local NetCDF
 instead of re-streaming every scene.  A stats-only run (``CACHE_PIXELS=False``)
 keeps only the reduced per-channel/geometry CSVs and discards the pixels, so any

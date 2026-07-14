@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Batched QA/QC report for EVERY patch of one size across a whole PICS.
 
-The batched counterpart to ``run_display_qc_visuals.py``: it enumerates every
+The batched counterpart to ``run_single_patch_qc_products.py``: it enumerates every
 patch of ``PATCH_SIZE`` in the PICS (from the patch-granule dict) and, for each,
 builds the per-scene QC PDF (optional) and refreshes the keep/remove worksheet —
 via the same :func:`emit_pics.qc_report.run_patch_qc` the single-patch runner
@@ -18,7 +18,7 @@ reviewer ``scripts/run_qc_review.py`` instead of a printed PDF.
 
 Edit the user-configurable inputs below, then run::
 
-    python scripts/run_PICS_allpatches_qc.py
+    python scripts/run_PICS_allpatches_qc_products.py
 """
 
 import sys

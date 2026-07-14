@@ -15,12 +15,12 @@ must actually be streamed.  Set ``PREFER_CUBE = False`` to always stream.  The
 nadir track needs whole-scene VZA and so is drawn only on the streaming path.
 
 For **every** patch of a size across a PICS in one pass, use
-``scripts/run_PICS_allpatches_qc.py`` (this script's batched counterpart); both
+``scripts/run_PICS_allpatches_qc_products.py`` (this script's batched counterpart); both
 delegate to :func:`emit_pics.qc_report.run_patch_qc`.
 
 Edit the user-configurable inputs below, then run::
 
-    python scripts/run_display_qc_visuals.py
+    python scripts/run_single_patch_qc_products.py
 """
 
 import sys

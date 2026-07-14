@@ -6,8 +6,8 @@ and a refreshed keep/remove worksheet (:func:`emit_pics.qc_gate.build_qc_sheet`)
 
 It is the orchestration layer shared by two thin runners:
 
-* ``scripts/run_display_qc_visuals.py`` — one patch, and
-* ``scripts/run_PICS_allpatches_qc.py`` — every patch of a size in a PICS.
+* ``scripts/run_single_patch_qc_products.py`` — one patch, and
+* ``scripts/run_PICS_allpatches_qc_products.py`` — every patch of a size in a PICS.
 
 Design notes
 ------------
