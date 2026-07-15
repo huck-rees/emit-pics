@@ -41,6 +41,7 @@ the companion `northafrican_pics.gpkg` (for GIS use) can be regenerated from it.
 | `qc_review` | Interactive keep/remove reviewer (pure matplotlib) that renders each scene from the cached cubes and writes verdicts straight to the per-patch `qc.csv`. |
 | `display_spectra` | Overlay every QC-surviving scene's RAD/RFL spectrum for a patch (one series per scene, date-ramped; absorption bands masked). |
 | `delta_calculations` | Per-wavelength **t1→t2** % change across matched pairs (band-order join; tidy long CSV). |
+| `PICS_allpatches_aggregate_pairs` | **Option A** — collapse each acquisition pair's spatial-replicate patches to one median ΔR per channel (with `n_patches` + spread diagnostics), removing the pseudo-replication before the drift fit. |
 | `matched_pairs_drift_analysis` | Cross-PICS drift: per-channel Theil–Sen slope of ΔR vs Δt, Kendall-τ + BH-FDR significance, and the drift-spectrum / per-channel figures. |
 | `config` | PICS site geometry from `config/sites.yaml` — `pics_polygon` / `pics_geodataframe` build the ROI rectangle; `write_pics_gpkg` regenerates the GeoPackage. |
 
@@ -129,12 +130,16 @@ Then, for a chosen patch:
    touches no network. Pairs naturally with the batched extractor.
 
    *→ Enter verdicts one of two ways:*
-   - **Interactive (recommended):** **`python scripts/run_qc_review.py`** — a
-     pure-matplotlib reviewer that renders each scene from the cached cubes and
-     writes keep/remove verdicts straight to `qc.csv`. Mouse buttons *or* keyboard
-     (`k` keep, `r` remove, `1`–`4` remove-with-reason, ←/→ navigate, `v` mark the
-     patch reviewed, `q` quit); verdicts save on every action. Review one patch or
-     every patch of a size.
+   - **Interactive (recommended):** **`python scripts/run_qc_review.py`** (one
+     patch) or **`python scripts/run_PICS_allpatches_qc_review.py`** (every patch
+     of a size in one session) — a pure-matplotlib reviewer that renders each scene
+     from the cached cubes and writes keep/remove verdicts straight to `qc.csv`.
+     Mouse buttons *or* keyboard (`k` keep, `r` remove, `1`–`4` remove-with-reason,
+     ←/→ navigate, `v` mark the patch reviewed, `q` quit); verdicts save on every
+     action. In the all-patch reviewer, leaving a patch that isn't yet marked
+     `reviewed` arms a one-key confirm gate (`v` to mark & continue, forward again
+     to skip anyway, back to return), and quitting with any patch still unreviewed
+     asks the same — so a finished patch never gets left unmarked by accident.
    - **By hand:** open the PDF and in the worksheet set `keep=FALSE` (with a
      `reason`: cloud / coverage / artifact / other) for any bad scene, then set
      `reviewed=TRUE` in the top row.
@@ -153,8 +158,8 @@ Then, for a chosen patch:
    (step 5) with the per-channel RAD/RFL stats (step 3) and writes a tidy long
    CSV of the pairwise **t1→t2** percent change in reflectance and radiance
    (median & mean) at every wavelength — one row per `(matched pair × wavelength)`
-   → `data/delta_r/{site}_{patch}_delta.csv`. No aggregation or figures; the
-   cross-PICS analysis is step 7.
+   → `data/delta_r/per_patch/{site}_{patch}_delta.csv`. No aggregation or figures;
+   the per-PICS collapse is step 7 and the cross-PICS analysis is step 8.
 
    The two scenes are aligned **by band order** (band *i* ↔ band *i*), not by
    exact wavelength — EMIT recalibrated its wavelengths mid-record (~0.088 nm
@@ -183,23 +188,49 @@ step 3 (per-channel CSVs + geometry table) and the reviewed QC worksheet.
 
 Then, once step 6 has run for the patches you care about (across sites):
 
-7. **`python scripts/run_matched_pairs_drift_analysis.py`**
-   Pure **local** cross-PICS analysis: pools every step-6 delta CSV of one patch
-   size (`PATCH_SIZE`, the first field of `patch_id`, e.g. `10` km) and, per EMIT
-   channel, fits the **radiometric drift rate** as the robust **Theil–Sen** slope
-   of ΔR vs Δt (median statistic, %/yr), with a **Kendall-τ** p-value and
-   **Benjamini–Hochberg** FDR control across the 285 channels. Writes
+7. **`python scripts/run_PICS_allpatches_aggregate_pairs.py`**
+   Pure **local** per-PICS post-processor that removes the **pseudo-replication**
+   in the drift fit (*option A*). The step-6 tables carry one row per
+   `(patch × acquisition-pair × channel)`, so the *same* acquisition pair (same
+   two timestamps, hence the same sensor state and atmosphere) seen by many
+   spatial-replicate patches would otherwise enter the Theil–Sen fit as many
+   near-identical points, artificially narrowing the uncertainty. For one PICS at
+   one `PATCH_SIZE`, this pools every `data/delta_r/per_patch/{site}_{patch}_delta.csv`
+   and, per channel, collapses each unique acquisition pair's spatial replicates
+   to a single ΔR — the **median across patches** (robust to an anomalous patch,
+   matching the downstream estimator) — so every acquisition pair contributes
+   exactly one point. Writes `data/delta_r/aggregated/{site}_{size}_delta.csv`
+   (one row per `(acquisition pair × channel)`, same delta-table columns so it is
+   a drop-in for step 8), plus the diagnostics `n_patches` and the across-patch
+   spread (`*_std`/`*_min`/`*_max` of the median deltas) — not used to weight the
+   fit here, but exactly what a future inverse-variance (*option B*) scheme would
+   need. Prints a collapse summary quantifying the effective-N inflation removed
+   (e.g. *"142 patch-pair rows → 38 unique acquisition pairs; median 3 patches/pair"*).
+   Aggregation is **within one PICS** — a `pair_id` (timestamp pair) is unique to
+   a site since the PICS are far apart, so there is no cross-PICS collision.
+
+8. **`python scripts/run_matched_pairs_drift_analysis.py`**
+   Pure **local** cross-PICS analysis: pools the step-7 aggregated delta CSVs of
+   one patch size (`PATCH_SIZE`, the first field of `patch_id`, e.g. `10` km) and,
+   per EMIT channel, fits the **radiometric drift rate** as the robust
+   **Theil–Sen** slope of ΔR vs Δt (median statistic, %/yr), with a **Kendall-τ**
+   p-value and **Benjamini–Hochberg** FDR control across the 285 channels. Writes
    `data/drift/{size}_drift.csv` (per-channel stats, RAD + RFL), a
    `figures/matched_pairs/{size}_drift_spectrum.png` (drift rate vs wavelength,
    95% CI whiskers, BH-significance colouring), and — one per channel —
    `figures/matched_pairs/individual_channels/{size}_{wavelength}.png` (two-panel
-   ΔR-vs-Δt scatter, RAD | RFL; colour/shape = PICS, marker size ∝ mean |SZA|,
-   each panel overlaid with its Theil–Sen fit line + a stats box).
+   ΔR-vs-Δt scatter, RAD | RFL; colour/shape = PICS, **marker size ∝ `n_patches`**
+   so more-replicated pairs stay visible even though option A does not weight the
+   fit by it, each panel overlaid with its Theil–Sen fit line + a stats box).
+   The estimator is unchanged — it just operates on the deduplicated rows. By
+   default `USE_AGGREGATED = True` reads `data/delta_r/aggregated/`; set it to
+   `False` to fit the raw per-patch deltas from `data/delta_r/per_patch/`
+   (pseudo-replicated, dots sized by mean |SZA|) for comparison.
    **Water-vapor absorption bands are excluded from both products** (reflectance
    is fill there, radiance is atmospherically contaminated) — they appear as
    shaded gaps in the spectrum and are skipped in the per-channel figures.
-   Requires the step-6 delta CSVs to carry the `SZA_t1`/`SZA_t2`/`band_index`
-   columns (re-run step 6 if they predate that schema).
+   Requires the delta CSVs to carry the `SZA_t1`/`SZA_t2`/`band_index` columns
+   (re-run step 6, then step 7, if they predate that schema).
 
 **Optional:** `python scripts/run_export_pics_gpkg.py` regenerates
 `data/ROIs/northafrican_pics.gpkg` from `config/sites.yaml` for viewing the

@@ -1,12 +1,20 @@
 #!/usr/bin/env python
 """Cross-PICS radiometric-drift analysis for one patch size.
 
-Pure **local** post-processor (no Earthdata). Pools every per-patch delta CSV of
-one patch size (step 6, ``data/delta_r/{size}_*_delta.csv``) across all PICS and,
-per EMIT channel, fits the drift rate as the robust (Theil–Sen) slope of the
-pairwise percent change ΔR against the pair's time separation Δt, using the
-**median** in-patch statistic. Significance is Kendall's τ, false-discovery
-controlled across the 285 channels with Benjamini–Hochberg.
+Pure **local** post-processor (no Earthdata). Pools the delta CSVs of one patch
+size across all PICS and, per EMIT channel, fits the drift rate as the robust
+(Theil–Sen) slope of the pairwise percent change ΔR against the pair's time
+separation Δt, using the **median** in-patch statistic. Significance is Kendall's
+τ, false-discovery controlled across the 285 channels with Benjamini–Hochberg.
+
+By default (``USE_AGGREGATED = True``) it consumes the option-A **aggregated**
+tables (``data/delta_r/aggregated/{PICS}_{size}_delta.csv``, one row per
+acquisition pair per channel), so each acquisition pair contributes exactly one
+point and the fit is not pseudo-replicated across spatial-replicate patches; the
+per-channel scatter then sizes each dot by ``n_patches`` (replication).
+Set ``USE_AGGREGATED = False`` to fit the raw per-patch deltas
+(``data/delta_r/per_patch/{PICS}_{PATCH}_delta.csv``) instead, sized by mean
+|SZA| as before.
 
 Outputs
 -------
@@ -33,13 +41,21 @@ from pathlib import Path
 # ============================================================
 PATCH_SIZE = "10"           # patch-size token (first field of patch_id, e.g. 10 km)
 ALPHA = 0.05                # Benjamini–Hochberg false-discovery-rate target
+USE_AGGREGATED = True       # True  -> fit the option-A aggregated tables from
+                            #          data/delta_r/aggregated (1 point/acq. pair;
+                            #          dots sized by n_patches). Requires
+                            #          run_PICS_allpatches_aggregate_pairs.py first.
+                            # False -> fit the raw per-patch deltas from
+                            #          data/delta_r/per_patch (pseudo-replicated;
+                            #          dots sized by mean |SZA|).
 INDIVIDUAL_CHANNELS = True  # also render one two-panel scatter per channel (~285 PNGs)
 ONLY_BANDS = None           # e.g. [0, 50, 150] to render a subset for testing; None = all
 
 # Paths (repo-relative)
 _REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
 DATA_ROOT  = _REPO_ROOT / "data"
-DELTA_DIR  = DATA_ROOT / "delta_r"
+AGG_DIR       = DATA_ROOT / "delta_r" / "aggregated"    # option-A aggregated input
+PER_PATCH_DIR = DATA_ROOT / "delta_r" / "per_patch"     # raw per-patch input
 DRIFT_DIR  = DATA_ROOT / "drift"
 FIG_DIR    = _REPO_ROOT / "figures" / "matched_pairs"
 CHAN_DIR   = FIG_DIR / "individual_channels"
@@ -57,6 +73,7 @@ import pandas as pd
 from emit_pics.matched_pairs_drift_analysis import (
     absorption_band_indices,
     compute_drift_spectrum,
+    load_aggregated_delta_tables,
     load_delta_tables,
     plot_channel_scatter,
     plot_drift_spectrum,
@@ -64,19 +81,28 @@ from emit_pics.matched_pairs_drift_analysis import (
 
 
 def main() -> None:
-    # 1. Pool the delta tables for this patch size.
+    # 1. Pool the delta tables for this patch size (aggregated by default).
+    delta_dir = AGG_DIR if USE_AGGREGATED else PER_PATCH_DIR
+    loader = load_aggregated_delta_tables if USE_AGGREGATED else load_delta_tables
+    size_by = "n_patches" if USE_AGGREGATED else "sza"
     try:
-        df = load_delta_tables(DELTA_DIR, PATCH_SIZE)
+        df = loader(delta_dir, PATCH_SIZE)
     except ValueError as exc:
         print(f"\nInput schema error: {exc}")
         sys.exit(1)
     if df.empty:
-        print(f"No delta CSVs for patch size {PATCH_SIZE!r} in {DELTA_DIR}.\n"
-              f"Run scripts/run_delta_calculations.py for the relevant patches first.")
+        upstream = ("run_PICS_allpatches_aggregate_pairs.py" if USE_AGGREGATED
+                    else "run_delta_calculations.py")
+        print(f"No {'aggregated ' if USE_AGGREGATED else ''}delta CSVs for patch "
+              f"size {PATCH_SIZE!r} in {delta_dir}.\n"
+              f"Run scripts/{upstream} for the relevant patches first.")
         sys.exit(1)
 
-    print(f"Patch size {PATCH_SIZE} km: {len(df)} rows | "
-          f"{df['PICS_ID'].nunique()} PICS | {df['patch_id'].nunique()} patch(es) | "
+    src = "aggregated (1 row/pair/channel)" if USE_AGGREGATED else "per-patch (pseudo-replicated)"
+    patch_note = (f"{df['patch_id'].nunique()} patch(es) | " if "patch_id" in df.columns
+                  else "")
+    print(f"Patch size {PATCH_SIZE} km [{src}]: {len(df)} rows | "
+          f"{df['PICS_ID'].nunique()} PICS | {patch_note}"
           f"{df['pair_id'].nunique()} pair(s) | {df['band_index'].nunique()} channel(s)")
 
     # 2. Per-channel drift spectra (both products).
@@ -115,7 +141,7 @@ def main() -> None:
               f"-> {CHAN_DIR}")
         n_written = 0
         for k, bidx in enumerate(bands, 1):
-            fig, wl = plot_channel_scatter(df, bidx, spectra=spectra)
+            fig, wl = plot_channel_scatter(df, bidx, spectra=spectra, size_by=size_by)
             if fig is None:
                 continue
             path = CHAN_DIR / f"{PATCH_SIZE}_{wl:04.0f}.png"

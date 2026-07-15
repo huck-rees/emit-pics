@@ -1,9 +1,13 @@
 """Cross-PICS radiometric-drift analysis from the per-patch delta tables.
 
-Consumes the tidy long delta CSVs (step 6, ``data/delta_r/{PICS}_{PATCH}_delta.csv``)
-and, per EMIT channel, quantifies radiometric drift by regressing the pairwise
-percent change ΔR against the pair's time separation Δt across all PICS/patches
-of one patch size.
+Consumes the tidy long delta CSVs and, per EMIT channel, quantifies radiometric
+drift by regressing the pairwise percent change ΔR against the pair's time
+separation Δt across all PICS of one patch size. The intended input is the
+**aggregated** table (``data/delta_r/aggregated/{PICS}_{size}_delta.csv``, one row
+per acquisition pair per channel — spatial-replicate patches already collapsed;
+see :func:`load_aggregated_delta_tables`); the raw per-patch tables
+(``data/delta_r/per_patch/{PICS}_{PATCH}_delta.csv``, :func:`load_delta_tables`)
+are still loadable but pseudo-replicate each acquisition pair across patches.
 
 **Model.** Over a pseudo-invariant calibration site with geometry-matched pairs
 the surface is assumed stable, so if the sensor drifts linearly at rate ``m`` then
@@ -69,6 +73,11 @@ _REQUIRED_COLS = {
 _SZA_RANGE = (10.0, 65.0)      # degrees mapped to...
 _SIZE_RANGE = (25.0, 260.0)    # ...marker area (points^2)
 
+#: Fixed replicate-count -> marker-size mapping for the aggregated tables, so a
+#: more-replicated acquisition pair draws a larger dot (option A does not weight
+#: the fit by it, but replication stays visible in the figures).
+_NPATCH_RANGE = (1.0, 12.0)    # patch counts mapped to the same _SIZE_RANGE
+
 
 # ============================================================
 # STYLING / SMALL HELPERS
@@ -86,6 +95,11 @@ def patch_size_of(patch_id) -> str:
 def sza_marker_size(sza):
     """Map (absolute) SZA in degrees to a marker area — larger SZA, larger point."""
     return np.interp(np.asarray(sza, dtype=float), _SZA_RANGE, _SIZE_RANGE)
+
+
+def n_patches_marker_size(n):
+    """Map replicate patch count to a marker area — more patches, larger point."""
+    return np.interp(np.asarray(n, dtype=float), _NPATCH_RANGE, _SIZE_RANGE)
 
 
 def _truthy_any(series) -> bool:
@@ -149,6 +163,64 @@ def load_delta_tables(delta_dir, patch_size, *, glob_pattern="*_delta.csv"):
                 f"{csv.name} is missing columns {sorted(missing)}. Re-run "
                 "scripts/run_delta_calculations.py (step 6) to regenerate the "
                 "delta tables with the SZA_t1/SZA_t2/band_index schema."
+            )
+        frames.append(df)
+    if not frames:
+        return pd.DataFrame()
+    out = pd.concat(frames, ignore_index=True)
+    out["sza_size"] = np.nanmean(
+        np.abs(out[["SZA_t1", "SZA_t2"]].to_numpy(dtype=float)), axis=1)
+    return out
+
+
+def load_aggregated_delta_tables(agg_dir, patch_size, *, glob_pattern="*_delta.csv"):
+    """Concatenate the per-PICS *aggregated* delta CSVs of one patch size.
+
+    Counterpart to :func:`load_delta_tables` for the option-A aggregated tables
+    (``data/delta_r/aggregated/{PICS}_{size}_delta.csv``, from
+    ``run_PICS_allpatches_aggregate_pairs.py``), where each unique acquisition
+    pair contributes exactly one row per channel — the spatial-replicate patches
+    have already been collapsed. Because ``patch_id`` is gone, these tables carry
+    an explicit ``patch_size`` column (used here for the size filter) and an
+    ``n_patches`` diagnostic (used as the marker size in the per-channel figures).
+
+    Parameters
+    ----------
+    agg_dir : path-like
+        Directory of aggregated delta CSVs (``data/delta_r/aggregated``).
+    patch_size : str | int
+        Patch-size token to keep (matched against the ``patch_size`` column).
+
+    Returns
+    -------
+    pd.DataFrame
+        Combined rows for that size, plus a ``sza_size`` column
+        (``mean(|SZA_t1|, |SZA_t2|)``). Empty if no CSVs match.
+
+    Raises
+    ------
+    ValueError
+        If a matched CSV is missing a required column (regenerate with
+        ``run_PICS_allpatches_aggregate_pairs.py``).
+    """
+    agg_dir = Path(agg_dir)
+    # patch_id is intentionally absent from aggregated tables; everything else the
+    # analysis reads must still be present.
+    need = (_REQUIRED_COLS - {"patch_id"}) | {"patch_size", "n_patches"}
+    frames = []
+    for csv in sorted(agg_dir.glob(glob_pattern)):
+        df = pd.read_csv(csv)
+        if "patch_size" not in df.columns:
+            continue
+        df = df[df["patch_size"].astype(str) == str(patch_size)]
+        if df.empty:
+            continue
+        missing = need - set(df.columns)
+        if missing:
+            raise ValueError(
+                f"{csv.name} is missing columns {sorted(missing)}. Re-run "
+                "scripts/run_PICS_allpatches_aggregate_pairs.py to regenerate the "
+                "aggregated delta tables."
             )
         frames.append(df)
     if not frames:
@@ -251,18 +323,25 @@ def compute_drift_spectrum(df, product, *, alpha=DEFAULT_ALPHA):
 # ============================================================
 # FIGURES (returned, not saved)
 # ============================================================
-def _channel_legend(ax, sub):
-    """PICS colour/shape legend + an SZA marker-size reference."""
+def _channel_legend(ax, sub, *, size_by="sza"):
+    """PICS colour/shape legend + a marker-size reference (SZA or #patches)."""
     handles = [mlines.Line2D([], [], color=pics_style(p)[0],
                              marker=pics_style(p)[1], ls="", markeredgecolor="k",
                              markersize=8, label=str(p))
                for p in sorted(sub["PICS_ID"].unique())]
     handles.append(mlines.Line2D([], [], ls="", label=""))   # spacer
-    for sza in (20, 40, 60):
-        handles.append(mlines.Line2D([], [], color="gray", marker="o", ls="",
-                                     markeredgecolor="k",
-                                     markersize=np.sqrt(sza_marker_size(sza)),
-                                     label=f"SZA {sza}°"))
+    if size_by == "n_patches":
+        for n in (1, 5, 10):
+            handles.append(mlines.Line2D([], [], color="gray", marker="o", ls="",
+                                         markeredgecolor="k",
+                                         markersize=np.sqrt(n_patches_marker_size(n)),
+                                         label=f"{n} patch(es)"))
+    else:
+        for sza in (20, 40, 60):
+            handles.append(mlines.Line2D([], [], color="gray", marker="o", ls="",
+                                         markeredgecolor="k",
+                                         markersize=np.sqrt(sza_marker_size(sza)),
+                                         label=f"SZA {sza}°"))
     ax.legend(handles=handles, fontsize=8, loc="best", framealpha=0.9)
 
 
@@ -303,14 +382,19 @@ def _draw_fit(ax, stats, x):
             bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.85))
 
 
-def plot_channel_scatter(df, band_index, *, spectra=None, stat_label="median"):
+def plot_channel_scatter(df, band_index, *, spectra=None, stat_label="median",
+                         size_by="sza"):
     """Two-panel ΔR-vs-Δt scatter for one channel: RAD (left), RFL (right).
 
-    Points are coloured + shaped by PICS and sized by ``mean(|SZA_t1|,|SZA_t2|)``.
-    Each panel overlays its Theil–Sen regression line and a stats box (drift
-    rate, 95% CI, intercept, Kendall p, n, BH-significance). Stats come from
-    *spectra* (``{"rad": spec_rad, "rfl": spec_rfl}``) when given — the same
-    values as the drift spectrum — otherwise they are fit on the fly.
+    Points are coloured + shaped by PICS. Marker size encodes *size_by*:
+    ``"sza"`` (default) sizes by ``mean(|SZA_t1|,|SZA_t2|)``; ``"n_patches"``
+    sizes by the replicate-patch count (for the aggregated tables, so a more-
+    replicated acquisition pair draws a larger dot). If ``"n_patches"`` is
+    requested but the column is absent, it falls back to SZA. Each panel overlays
+    its Theil–Sen regression line and a stats box (drift rate, 95% CI, intercept,
+    Kendall p, n, BH-significance). Stats come from *spectra*
+    (``{"rad": spec_rad, "rfl": spec_rfl}``) when given — the same values as the
+    drift spectrum — otherwise they are fit on the fly.
 
     Returns ``(fig, wavelength)``, or ``(None, None)`` if the channel has no rows
     or is a water-vapor absorption band (excluded from the analysis).
@@ -318,13 +402,16 @@ def plot_channel_scatter(df, band_index, *, spectra=None, stat_label="median"):
     sub = df[df["band_index"] == band_index]
     if sub.empty or _truthy_any(sub["absorption_band_flag"]):
         return None, None
+    use_npatch = size_by == "n_patches" and "n_patches" in sub.columns
     wl = float(np.nanmedian(sub["wavelength"]))
     fig, axes = plt.subplots(1, 2, figsize=(13, 5.5), sharex=True)
     for ax, product in zip(axes, ("rad", "rfl")):
         dcol = _DELTA_COL[product]
         for pics, g in sub.groupby("PICS_ID"):
             color, marker = pics_style(pics)
-            ax.scatter(g["dt_days"], g[dcol], s=sza_marker_size(g["sza_size"]),
+            sizes = (n_patches_marker_size(g["n_patches"]) if use_npatch
+                     else sza_marker_size(g["sza_size"]))
+            ax.scatter(g["dt_days"], g[dcol], s=sizes,
                        c=color, marker=marker, edgecolors="k", linewidths=0.4,
                        alpha=0.8, label=str(pics))
         ax.axhline(0.0, color="gray", lw=0.8, ls="--")
@@ -335,9 +422,11 @@ def plot_channel_scatter(df, band_index, *, spectra=None, stat_label="median"):
             stats = fit_channel_drift(sub["dt_days"], sub[dcol])
         _draw_fit(ax, stats, sub["dt_days"].to_numpy())
     axes[0].set_ylabel(f"ΔR — % change ({stat_label})")
-    _channel_legend(axes[1], sub)
+    _channel_legend(axes[1], sub, size_by="n_patches" if use_npatch else "sza")
+    size_note = ("marker size ∝ #patches (replication)" if use_npatch
+                 else "marker size ∝ mean |SZA|")
     fig.suptitle(f"Channel {int(band_index)} — {wl:.1f} nm    "
-                 f"(colour/shape = PICS, marker size ∝ mean |SZA|; black line = "
+                 f"(colour/shape = PICS, {size_note}; black line = "
                  f"Theil–Sen fit)")
     fig.tight_layout()
     return fig, wl

@@ -33,7 +33,9 @@ DATA_ROOT   = _REPO_ROOT / "data"
 MATCHED_DIR = DATA_ROOT / "matched_pairs"
 RFL_DIR     = DATA_ROOT / "reflectance"
 RAD_DIR     = DATA_ROOT / "radiance"
-OUT_DIR     = DATA_ROOT / "delta_r"
+OUT_DIR     = DATA_ROOT / "delta_r" / "per_patch"   # per-patch deltas; the
+                                                    # aggregated table (option A)
+                                                    # lives in delta_r/aggregated
 
 MATCHED_PATH = MATCHED_DIR / f"{PICS_ID}_{PATCH_ID}_matched_pairs.csv"
 OUT_PATH     = OUT_DIR / f"{PICS_ID}_{PATCH_ID}_delta.csv"
