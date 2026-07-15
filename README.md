@@ -152,6 +152,10 @@ Then, for a chosen patch:
    **applies the QC gate** (drops `keep=FALSE` scenes; refuses to run until the
    worksheet is `reviewed=TRUE`, unless `REQUIRE_QC_REVIEW=False`), then writes
    the matched-pair CSV and the SZA/VZA-over-time figure.
+   **Batched alternative:** `python scripts/run_PICS_allpatches_id_matched_pairs.py`
+   runs this for every patch of a size in one pass (skipping any patch that is
+   unreviewed, missing its geometry table, or left with <2 scenes) and amends the
+   attribute table once with each patch's matched-pair counts.
 
 6. **`python scripts/run_delta_calculations.py`**
    Pure **local** post-processor (no Earthdata): joins the matched-pairs CSV
