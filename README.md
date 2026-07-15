@@ -185,6 +185,11 @@ date-labelled legend). Two high-resolution (1000 dpi) PNGs are written,
 absorption bands are masked by data availability (where L2A reflectance is fill)
 in **both** products, so every curve breaks in the same windows. Requires only
 step 3 (per-channel CSVs + geometry table) and the reviewed QC worksheet.
+**`python scripts/run_PICS_allpatches_display_spectra.py`** is the batched
+counterpart: it renders the same survivor-spectra overlays for *every* patch of a
+size in one run — the quickest way to re-check a whole PICS after a QC pass
+(missed scenes stand out as stray curves), reporting per patch how many scenes
+survived and skipping any that are unreviewed or fully pruned.
 
 Then, once step 6 has run for the patches you care about (across sites):
 
