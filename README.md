@@ -173,6 +173,11 @@ Then, for a chosen patch:
    too). Any pair that can't be formed is reported **loudly** and the run exits
    non-zero: *skipped* (a scene's radiance stats are missing — re-run step 3) or
    *degenerate* (the two scenes' band grids don't correspond).
+   **Batched alternative:** `python scripts/run_PICS_allpatches_delta_calculations.py`
+   runs this for every patch of a size in one pass; each patch still writes
+   whatever succeeded, the dropped-pair accounting is aggregated across the whole
+   run (listed by patch, exit 2 if any pair dropped anywhere), and a patch whose
+   matched-pairs CSV is absent is reported without tripping that exit code.
 
 Because the QC gate is enforced in step 5, run **step 4 before step 5** and do
 the manual inspection in between; QC exclusions then propagate automatically to
