@@ -1,0 +1,4 @@
+product,band_index,wavelength,absorption_band,n,slope_pct_yr,ci_low_pct_yr,ci_high_pct_yr,intercept_pct,kendall_tau,p_value,raw_significant,bh_qvalue,bh_significant
+rad,0,500.0,False,10,2.0,2.0,2.0,0.0,0.9999999999999999,0.0001984024045859716,True,0.0001984024045859716,True
+rad,1,650.0,False,10,-1.0,-1.0,-1.0,0.0,-0.9999999999999999,0.0001984024045859716,True,0.0001984024045859716,True
+rad,2,1400.0,True,10,,,,,,,False,,False

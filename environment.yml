@@ -18,6 +18,7 @@ dependencies:
   - rioxarray
   - h5netcdf
   - spectral
+  - pytest
   - pip
   - pip:
     - earthaccess

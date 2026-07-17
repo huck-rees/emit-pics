@@ -1,0 +1,11 @@
+# Project tooling configuration.
+#
+# For now this only configures the test runner (change #5 of docs/IMPROVEMENT_PLAN.md).
+# `pythonpath = ["."]` lets the tests `import emit_pics` straight from the repo
+# root without installing the package — the pip-installable packaging (which will
+# also let the scripts drop their sys.path boilerplate) is added later in #4.
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
