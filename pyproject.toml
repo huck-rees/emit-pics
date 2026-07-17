@@ -1,9 +1,48 @@
-# Project tooling configuration.
+# Project + tooling configuration.
 #
-# For now this only configures the test runner (change #5 of docs/IMPROVEMENT_PLAN.md).
-# `pythonpath = ["."]` lets the tests `import emit_pics` straight from the repo
-# root without installing the package — the pip-installable packaging (which will
-# also let the scripts drop their sys.path boilerplate) is added later in #4.
+# The [project] table makes `emit_pics` a pip-installable package. Install it
+# once into the conda env in editable mode:
+#
+#     pip install -e . --no-deps
+#
+# `--no-deps` keeps pip from pulling PyPI copies of the geospatial stack that
+# conda already provides (see environment.yml, the supported install path).
+# After this, `import emit_pics` works from anywhere — notebooks, tests, and the
+# scripts — so the per-script sys.path boilerplate is no longer needed.
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emit-pics"
+version = "0.1.0"
+description = "Radiometric temporal-stability analysis of NASA EMIT over North African PICS."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "xarray",
+    "netCDF4",
+    "rasterio",
+    "geopandas",
+    "shapely",
+    "matplotlib",
+    "pyyaml",
+    "rioxarray",
+    "h5netcdf",
+    "spectral",
+    "earthaccess",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+# Only the library is a package; scripts/ and tests/ are not installed.
+[tool.setuptools]
+packages = ["emit_pics"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

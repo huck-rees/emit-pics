@@ -23,7 +23,9 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from emit_pics.id_matched_pairs import acq_timestamp, band_index
+from emit_pics.id_matched_pairs import (
+    acq_timestamp, band_index, load_patch_dict, split_products,
+)
 
 # ============================================================
 # CONSTANTS
@@ -46,21 +48,13 @@ _STAT_KEYS = ["min", "1qt", "median", "3qt", "max", "mean", "std"]
 
 
 # ============================================================
-# DICT LOADING & ACQUISITION PAIRING
+# ACQUISITION PAIRING
 # ============================================================
-def load_patch_dict(dict_path, sep: str = "\t") -> pd.DataFrame:
-    """Load the tab-separated patch–granule dictionary CSV."""
-    return pd.read_csv(dict_path, sep=sep)
-
-
-def split_products(dict_df: pd.DataFrame, patch_id: str) -> tuple[list[str], list[str]]:
-    """Return ``(rad_urs, rfl_urs)`` GranuleURs for *patch_id*."""
-    sub = dict_df[dict_df["patch_id"] == patch_id]
-    rad = sub[sub["product"] == "L1B_RAD"]["granule_ur"].tolist()
-    rfl = sub[sub["product"] == "L2A_RFL"]["granule_ur"].tolist()
-    return rad, rfl
-
-
+# ``load_patch_dict`` and ``split_products`` are defined once in
+# ``emit_pics.id_matched_pairs`` and re-exported here (imported at the top of
+# this module), so the historical ``from emit_pics.extract_patch_stats import
+# load_patch_dict / split_products`` paths keep working without duplicating the
+# bodies.
 def pair_acquisitions(rad_urs: list[str], rfl_urs: list[str]) -> list[dict]:
     """Pair RAD and RFL granules by acquisition timestamp.
 

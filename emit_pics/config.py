@@ -78,6 +78,20 @@ def get_site(site_id: str, config_path: Path = DEFAULT_CONFIG) -> dict[str, Any]
     return match
 
 
+def canonical_token(site_id: str, config_path: Path = DEFAULT_CONFIG) -> str:
+    """Return the canonical filename token for a site (e.g. ``"Libya_4"``).
+
+    Resolves any accepted spelling — slug (``"libya_4"``), spaced ``site_name``
+    (``"Libya 4"``) or underscored id (``"Libya_4"``) — to the single token used
+    in every output filename: the site's ``site_name`` with spaces replaced by
+    underscores. This reproduces the historical convention
+    (``patch_generator._safe_filename`` applied to the site name) exactly, so
+    existing on-disk filenames are unchanged. Routing all filename construction
+    through this makes the token derived one way, in one place.
+    """
+    return get_site(site_id, config_path)["site_name"].replace(" ", "_")
+
+
 # ============================================================
 # GEOMETRY
 # ============================================================
