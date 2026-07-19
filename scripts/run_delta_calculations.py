@@ -13,42 +13,19 @@ No aggregation, no figures: the cross-PICS analysis is a separate future step.
 Requires ``run_single_patch_cube_extract.py`` (per-channel CSVs) and
 ``run_id_matched_pairs.py`` (matched-pairs CSV) to have run first for this patch.
 
-Edit the user-configurable inputs below, then run::
+Set the analysis target in run_config.yaml, then run::
 
     python scripts/run_delta_calculations.py
 """
 
 import sys
-from pathlib import Path
-
-# ============================================================
-# USER-CONFIGURABLE INPUTS
-# ============================================================
-PICS_ID  = "Libya_4"       # underscored site id (input + output file paths)
-PATCH_ID = "10_7_1"        # patch_id to analyze
-
-# Paths (repo-relative; inputs produced by upstream steps)
-_REPO_ROOT  = Path(__file__).resolve().parent.parent          # .../emit-pics
-DATA_ROOT   = _REPO_ROOT / "data"
-MATCHED_DIR = DATA_ROOT / "matched_pairs"
-RFL_DIR     = DATA_ROOT / "reflectance"
-RAD_DIR     = DATA_ROOT / "radiance"
-OUT_DIR     = DATA_ROOT / "delta_r" / "per_patch"   # per-patch deltas; the
-                                                    # aggregated table (option A)
-                                                    # lives in delta_r/aggregated
-
-MATCHED_PATH = MATCHED_DIR / f"{PICS_ID}_{PATCH_ID}_matched_pairs.csv"
-OUT_PATH     = OUT_DIR / f"{PICS_ID}_{PATCH_ID}_delta.csv"
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
 
 import numpy as np
 import pandas as pd
 
+from emit_pics import paths
+from emit_pics.config import canonical_token
+from emit_pics.run_config import load_config
 from emit_pics.delta_calculations import (
     DELTA_CSV_COLS,
     WL_MATCH_TOL_NM,
@@ -60,6 +37,20 @@ from emit_pics.delta_calculations import (
     scene_perchannel_path,
 )
 from emit_pics.id_matched_pairs import acq_timestamp
+
+# ============================================================
+# INPUTS — set the analysis target in run_config.yaml, not here.
+# ============================================================
+cfg = load_config()
+PICS_ID  = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"
+PATCH_ID = cfg.patch
+
+# Repo-relative paths — every name is built in emit_pics.paths.
+RFL_DIR      = paths.RFL_DIR
+RAD_DIR      = paths.RAD_DIR
+OUT_DIR      = paths.DELTA_PER_PATCH_DIR
+MATCHED_PATH = paths.matched_pairs(PICS_ID, PATCH_ID)
+OUT_PATH     = paths.delta_per_patch(PICS_ID, PATCH_ID)
 
 
 def main() -> None:

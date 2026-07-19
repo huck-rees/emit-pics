@@ -1,0 +1,52 @@
+# EMIT-PICS run configuration — the ONE place to set the analysis target.
+#
+# Edit this file, then run the scripts (or scripts/run_pipeline.py). It replaces
+# the per-script "USER-CONFIGURABLE INPUTS" blocks. `site` accepts any spelling
+# (libya_4 / "Libya 4" / Libya_4); it is resolved to the canonical filename token.
+
+# --- analysis target (required) ---
+site: Libya_4          # PICS site (any spelling)
+patch: "10_7_1"        # patch_id for the single-patch steps
+patch_size: "10"       # patch-size token (km) for the batched (all-patches) steps
+
+# --- EMIT product short names ---
+products:
+  rad_short_name: EMITL1BRAD
+  rfl_short_name: EMITL2ARFL
+
+# --- matched-pair tolerances (degrees) ---
+matching:
+  sza_tol: 2.0
+  vza_tol: 5.0
+
+# --- manual QC gate ---
+qc:
+  require_review: true   # downstream steps refuse until the QC worksheet is reviewed
+
+# --- spectra plots ---
+spectra:
+  stat: median           # "median" or "mean"
+
+# --- cross-PICS drift analysis ---
+drift:
+  alpha: 0.05            # Benjamini-Hochberg false-discovery-rate target
+  use_aggregated: true   # fit the option-A aggregated tables (vs raw per-patch)
+  individual_channels: true
+
+# --- pixel extraction ---
+extract:
+  cache_pixels: true
+  want_obs: true
+  filter_agg_flag: false
+  min_valid_frac: 0.60
+
+# --- Earthdata granule search (upstream, step 2) ---
+granule_search:
+  date_start: "2022-08-01"
+  date_end: "2026-06-30"
+  patch_size_km: 10
+
+# --- patch generation (upstream, step 1) ---
+patch_gen:
+  min_patch_km: 10
+  increment_km: 10

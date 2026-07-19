@@ -21,41 +21,20 @@ A patch whose matched-pairs CSV is absent (step 5 not run / blocked at QC for it
 is reported and skipped, but does **not** trip the drop exit code.
 
 Prerequisite: run ``run_PICS_allpatches_id_matched_pairs.py`` (step 5) and the
-cube extraction (per-channel CSVs) for the patches first. Edit the inputs below,
-then run::
+cube extraction (per-channel CSVs) for the patches first. Set the target in
+run_config.yaml, then run::
 
     python scripts/run_PICS_allpatches_delta_calculations.py
 """
 
 import sys
-from pathlib import Path
-
-# ============================================================
-# USER-CONFIGURABLE INPUTS
-# ============================================================
-PICS_ID    = "Libya_4"      # underscored site id (input + output file paths)
-PATCH_SIZE = "10"           # patch-size token (first field of patch_id, e.g. 10 km)
-
-# Paths (repo-relative; inputs produced by upstream steps)
-_REPO_ROOT  = Path(__file__).resolve().parent.parent          # .../emit-pics
-DATA_ROOT   = _REPO_ROOT / "data"
-PATCH_DIR   = DATA_ROOT / "ROIs" / "patches"
-MATCHED_DIR = DATA_ROOT / "matched_pairs"
-RFL_DIR     = DATA_ROOT / "reflectance"
-RAD_DIR     = DATA_ROOT / "radiance"
-OUT_DIR     = DATA_ROOT / "delta_r" / "per_patch"
-
-DICT_PATH   = PATCH_DIR / f"patch_EMIT_dict_{PICS_ID}.csv"
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
 
 import numpy as np
 import pandas as pd
 
+from emit_pics import paths
+from emit_pics.config import canonical_token
+from emit_pics.run_config import load_config
 from emit_pics.delta_calculations import (
     DELTA_CSV_COLS,
     WL_MATCH_TOL_NM,
@@ -70,6 +49,19 @@ from emit_pics.extract_patch_stats import load_patch_dict
 from emit_pics.id_matched_pairs import sniff_delimiter
 from emit_pics.PICS_allpatches_cube_extract import patch_ids_for_size
 
+# ============================================================
+# INPUTS — set the analysis target in run_config.yaml, not here.
+# ============================================================
+cfg = load_config()
+PICS_ID    = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"
+PATCH_SIZE = cfg.patch_size
+
+# Repo-relative paths — every name is built in emit_pics.paths.
+RFL_DIR   = paths.RFL_DIR
+RAD_DIR   = paths.RAD_DIR
+OUT_DIR   = paths.DELTA_PER_PATCH_DIR
+DICT_PATH = paths.patch_dict(PICS_ID)
+
 
 def process_patch(pid: str) -> dict:
     """Compute one patch's delta table; return a per-patch report (never exits).
@@ -79,8 +71,8 @@ def process_patch(pid: str) -> dict:
     ``"missing_csv"``), the matched/with-delta pair counts, and the ``skipped`` /
     ``degenerate`` drop lists + ``missing_rad`` paths for the aggregated loud-fail.
     """
-    matched_path = MATCHED_DIR / f"{PICS_ID}_{pid}_matched_pairs.csv"
-    out_path = OUT_DIR / f"{PICS_ID}_{pid}_delta.csv"
+    matched_path = paths.matched_pairs(PICS_ID, pid)
+    out_path = paths.delta_per_patch(PICS_ID, pid)
     rep = {"pid": pid, "status": None, "n_matched": 0, "n_with_deltas": 0,
            "skipped": [], "degenerate": [], "missing_rad": {}}
 
