@@ -33,7 +33,7 @@ Set the analysis target in run_config.yaml, then run::
 
 import sys
 
-from emit_pics import paths
+from emit_pics import paths, provenance
 from emit_pics.config import canonical_token
 from emit_pics.run_config import load_config
 
@@ -84,6 +84,7 @@ def main() -> None:
 
     # 3. Write the aggregated tidy table.
     out = write_aggregated_table(agg, OUT_PATH)
+    provenance.write_sidecar(OUT_PATH, cfg.as_dict())
 
     # 4. Collapse summary — how much pseudo-replication option A removed.
     s = collapse_summary(raw, agg)

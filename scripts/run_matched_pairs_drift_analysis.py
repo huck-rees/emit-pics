@@ -35,7 +35,7 @@ Set the analysis target in run_config.yaml, then run::
 
 import sys
 
-from emit_pics import paths
+from emit_pics import paths, provenance
 from emit_pics.run_config import load_config
 
 # ============================================================
@@ -102,6 +102,7 @@ def main() -> None:
     DRIFT_DIR.mkdir(parents=True, exist_ok=True)
     out_csv = paths.drift(PATCH_SIZE)
     pd.concat([spec_rad, spec_rfl], ignore_index=True).to_csv(out_csv, index=False)
+    provenance.write_sidecar(out_csv, cfg.as_dict())
     print(f"\nDrift stats CSV -> {out_csv}")
     for name, spec in (("RAD", spec_rad), ("RFL", spec_rfl)):
         n_fit = int(spec["slope_pct_yr"].notna().sum())

@@ -32,7 +32,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from emit_pics import paths
+from emit_pics import paths, provenance
 from emit_pics.config import canonical_token
 from emit_pics.run_config import load_config
 from emit_pics.delta_calculations import (
@@ -134,6 +134,7 @@ def process_patch(pid: str) -> dict:
         table = pd.concat(frames, ignore_index=True)[DELTA_CSV_COLS]
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         table.to_csv(out_path, index=False)
+        provenance.write_sidecar(out_path, cfg.as_dict())
         rep["n_with_deltas"] = int(table["pair_id"].nunique())
         rep["status"] = "produced"
     else:

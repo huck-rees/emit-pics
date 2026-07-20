@@ -44,7 +44,7 @@ import earthaccess
 import numpy as np
 import pandas as pd
 
-from emit_pics import paths
+from emit_pics import paths, provenance
 from emit_pics.config import canonical_token
 from emit_pics.run_config import load_config
 from emit_pics.id_matched_pairs import (
@@ -244,6 +244,7 @@ def main() -> None:
         GEOM_DIR.mkdir(parents=True, exist_ok=True)
         geom_path = paths.geometry(PICS_ID, PATCH_ID)
         geom_df.to_csv(geom_path, index=False)
+        provenance.write_sidecar(geom_path, cfg.as_dict())
         print(f"\nGeometry table:     {geom_path}  ({len(geom_df)} scene(s))")
         amend_dict_geometry(DICT_PATH, geom_records)
     else:

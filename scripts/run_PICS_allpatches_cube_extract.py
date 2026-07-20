@@ -57,7 +57,7 @@ import earthaccess
 import numpy as np
 import pandas as pd
 
-from emit_pics import paths
+from emit_pics import paths, provenance
 from emit_pics.config import canonical_token
 from emit_pics.run_config import load_config
 from emit_pics.id_matched_pairs import (
@@ -250,6 +250,7 @@ def write_geometry_tables(geom_by_patch):
         # which pandas cannot order ("'<' not supported between Timestamp and str").
         df = df.sort_values("timestamp").reset_index(drop=True)
         df.to_csv(out_path, index=False)
+        provenance.write_sidecar(out_path, cfg.as_dict())
         n += 1
     print(f"\nGeometry tables:    {n} patch table(s) merged/written -> {GEOM_DIR}")
 

@@ -23,7 +23,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from emit_pics import paths
+from emit_pics import paths, provenance
 from emit_pics.config import canonical_token
 from emit_pics.run_config import load_config
 from emit_pics.delta_calculations import (
@@ -122,6 +122,7 @@ def main() -> None:
         table = pd.concat(frames, ignore_index=True)[DELTA_CSV_COLS]
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         table.to_csv(OUT_PATH, index=False)
+        provenance.write_sidecar(OUT_PATH, cfg.as_dict())
         n_pairs = table["pair_id"].nunique()
         n_rfl = int(table["delta_rfl_pct_median"].notna().sum())
         n_flagged = int(table["absorption_band_flag"].sum())

@@ -30,7 +30,7 @@ import matplotlib
 matplotlib.use("Agg")          # non-interactive backend
 import pandas as pd
 
-from emit_pics import paths
+from emit_pics import paths, provenance
 from emit_pics.config import canonical_token
 from emit_pics.run_config import load_config
 from emit_pics.id_matched_pairs import (
@@ -111,6 +111,7 @@ def main() -> None:
     csv_path = paths.matched_pairs(PICS_ID, PATCH_ID)
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     out_csv.to_csv(csv_path, index=False)
+    provenance.write_sidecar(csv_path, cfg.as_dict())
     print(f"\nMatched-pairs CSV:  {csv_path}")
 
     # 4. Print matched pairs to stdout.

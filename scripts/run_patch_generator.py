@@ -8,7 +8,7 @@ Set the analysis target in run_config.yaml, then run:
 
 import sys
 
-from emit_pics import paths
+from emit_pics import paths, provenance
 from emit_pics.config import canonical_token, pics_geodataframe
 from emit_pics.run_config import load_config
 from emit_pics.patch_generator import (
@@ -65,6 +65,7 @@ def main() -> None:
 
     # 4. Write outputs.
     gpkg_path, csv_path = write_outputs(patches_gdf, PICS_NAME, OUT_DIR)
+    provenance.write_sidecar(csv_path, cfg.as_dict())
     print(f"\nGeoPackage: {gpkg_path}")
     print(f"CSV:        {csv_path}")
 

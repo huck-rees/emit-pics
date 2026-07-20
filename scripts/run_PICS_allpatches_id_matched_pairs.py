@@ -40,7 +40,7 @@ matplotlib.use("Agg")          # non-interactive backend
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from emit_pics import paths
+from emit_pics import paths, provenance
 from emit_pics.config import canonical_token
 from emit_pics.run_config import load_config
 from emit_pics.extract_patch_stats import load_patch_dict
@@ -120,6 +120,7 @@ def process_patch(pid: str):
     paths.MATCHED_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = paths.matched_pairs(PICS_ID, pid)
     out_csv.to_csv(csv_path, index=False)
+    provenance.write_sidecar(csv_path, cfg.as_dict())
 
     # SZA/VZA-over-time figure (boxplots drawn from the cached percentiles).
     paths.FIGURES.mkdir(parents=True, exist_ok=True)

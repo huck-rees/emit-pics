@@ -20,7 +20,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from emit_pics import paths
+from emit_pics import paths, provenance
 from emit_pics.run_config import load_config
 from emit_pics.config import pics_geodataframe
 from emit_pics.id_granules import (
@@ -187,6 +187,7 @@ def main() -> None:
         out_dict = new_dict
 
     out_dict.to_csv(dict_path, index=False)
+    provenance.write_sidecar(dict_path, cfg.as_dict())
     print(f"\nPatch-granule dict:  {dict_path}")
     print(f"  {len(new_dict)} new row(s) for {PATCH_SIZE_KM} km; "
           f"{len(out_dict)} row(s) total")
