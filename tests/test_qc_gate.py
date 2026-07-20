@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from emit_pics.qc_gate import (
-    QC_SHEET_COLS, QCReviewRequired, _keep, _truthy, apply_qc_filter,
+    QC_SHEET_COLS, QCReviewRequired, _keep, _truthy, apply_qc_filter, is_reviewed,
 )
 
 
@@ -71,3 +71,16 @@ def test_apply_qc_filter_bypass_when_review_not_required(tmp_path):
                                        require_review=False)
     assert report["n_excluded"] == 0
     assert len(filtered) == 3
+
+
+# ---------------------------------------------------------------------- is_reviewed
+def test_is_reviewed_missing_file(tmp_path):
+    assert is_reviewed(tmp_path / "none.csv") is False
+
+
+def test_is_reviewed_true_and_false(tmp_path):
+    qc = tmp_path / "qc.csv"
+    _write_sheet(qc, [{"scene_ts": "20230101T100000", "keep": "TRUE"}], reviewed=True)
+    assert is_reviewed(qc) is True
+    _write_sheet(qc, [{"scene_ts": "20230101T100000", "keep": "TRUE"}], reviewed=False)
+    assert is_reviewed(qc) is False

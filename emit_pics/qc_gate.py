@@ -147,6 +147,19 @@ def build_qc_sheet(geom_path, qc_path, *, mask_dir=None,
 # ============================================================
 # DOWNSTREAM FILTER
 # ============================================================
+def is_reviewed(qc_path) -> bool:
+    """True if the QC worksheet exists and its top-row ``reviewed`` flag is set.
+
+    A lightweight gate check for the pipeline runner — it does not filter scenes
+    or raise, it just reports whether the manual review has been marked done.
+    """
+    qc_path = Path(qc_path)
+    if not qc_path.exists():
+        return False
+    qc = pd.read_csv(qc_path)
+    return bool(len(qc)) and "reviewed" in qc.columns and _truthy(qc["reviewed"].iloc[0])
+
+
 def apply_qc_filter(scenes: pd.DataFrame, qc_path, *,
                     require_review: bool = True, timestamp_col: str = "timestamp"):
     """Drop QC-excluded scenes from a per-scene table.
