@@ -20,7 +20,7 @@ Outputs (repo-relative)::
 
 Run ``run_single_patch_cube_extract.py`` (per-channel CSVs + geometry table) and complete the
 manual QC step (``run_single_patch_qc_products.py`` -> mark the worksheet reviewed) first,
-then edit the inputs below and run::
+then set the target in run_config.yaml and run::
 
     python scripts/run_display_spectra.py
 """
@@ -28,39 +28,14 @@ then edit the inputs below and run::
 import sys
 from pathlib import Path
 
-# ============================================================
-# USER-CONFIGURABLE INPUTS
-# ============================================================
-PICS_ID  = "Libya_4"       # underscored site id (input + output file paths)
-PATCH_ID = "10_7_1"        # patch_id within the geometry table
-STAT     = "median"        # in-patch statistic to plot: "median" or "mean"
-
-REQUIRE_QC_REVIEW = True   # require a reviewed QC worksheet before proceeding;
-                           # set False to bypass the manual QC gate entirely
-
-# Paths (repo-relative; inputs produced by upstream steps)
-_REPO_ROOT = Path(__file__).resolve().parent.parent           # .../emit-pics
-DATA_ROOT  = _REPO_ROOT / "data"
-GEOM_DIR   = DATA_ROOT / "geometry"
-QC_DIR     = DATA_ROOT / "qc"
-RFL_DIR    = DATA_ROOT / "reflectance"
-RAD_DIR    = DATA_ROOT / "radiance"
-FIG_ROOT   = _REPO_ROOT / "figures" / "spectra"
-
-GEOM_PATH = GEOM_DIR / f"geometry_{PICS_ID}_{PATCH_ID}.csv"
-QC_PATH   = QC_DIR / f"{PICS_ID}_{PATCH_ID}_qc.csv"
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
-
 import matplotlib
 matplotlib.use("Agg")          # non-interactive backend
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from emit_pics import paths
+from emit_pics.config import canonical_token
+from emit_pics.run_config import load_config
 from emit_pics.display_spectra import (
     FIG_DPI,
     PRODUCTS,
@@ -69,6 +44,19 @@ from emit_pics.display_spectra import (
     plot_patch_spectra,
 )
 from emit_pics.qc_gate import QCReviewRequired, apply_qc_filter
+
+# ============================================================
+# INPUTS — set the analysis target in run_config.yaml, not here.
+# ============================================================
+cfg = load_config()
+PICS_ID  = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"
+PATCH_ID = cfg.patch
+STAT     = cfg.spectra_stat
+REQUIRE_QC_REVIEW = cfg.require_qc_review
+
+# Repo-relative paths — every name is built in emit_pics.paths.
+GEOM_PATH = paths.geometry(PICS_ID, PATCH_ID)
+QC_PATH   = paths.qc_sheet(PICS_ID, PATCH_ID)
 
 
 def load_scenes(geom_path: Path) -> pd.DataFrame:
@@ -111,7 +99,7 @@ def main() -> None:
     # 2. Load each surviving scene's spectrum ONCE. Radiance anchors the join, so
     #    a scene with no radiance CSV cannot be drawn — report it, don't fail.
     loaded, missing = load_patch_spectra(scenes, PICS_ID, PATCH_ID,
-                                         RFL_DIR, RAD_DIR)
+                                         paths.RFL_DIR, paths.RAD_DIR)
     if missing:
         print(f"\n{len(missing)} scene(s) skipped — no radiance per-channel CSV "
               f"(re-run run_single_patch_cube_extract.py to include them):")
@@ -137,9 +125,8 @@ def main() -> None:
     for key, cfg in PRODUCTS.items():
         fig, plotted = plot_patch_spectra(loaded, cfg, STAT, bad_bands,
                                           PICS_ID, PATCH_ID)
-        out_dir = FIG_ROOT / cfg["subdir"]
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"{PICS_ID}_{PATCH_ID}_{STAT}_{key}_spectra.png"
+        out_path = paths.spectra_fig(PICS_ID, PATCH_ID, STAT, key)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         if plotted:
             fig.savefig(out_path, dpi=FIG_DPI, bbox_inches="tight")
             print(f"  {cfg['name']} ({plotted} scene(s)) -> {out_path}")

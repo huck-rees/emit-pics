@@ -17,7 +17,7 @@ A *matched pair* is two acquisitions with ``|ΔSZA| <= SZA_TOL`` and
 matching is identical for the L1B_RAD and L2A_RFL products.
 
 Run ``scripts/run_single_patch_cube_extract.py`` for this patch first to produce the
-geometry table, then edit the inputs below and run::
+geometry table, then set the target in run_config.yaml and run::
 
     python scripts/run_id_matched_pairs.py
 """
@@ -26,40 +26,13 @@ import os
 import sys
 from pathlib import Path
 
-# ============================================================
-# USER-CONFIGURABLE INPUTS
-# ============================================================
-PICS_ID  = "Libya_4"       # underscored site id (input + output file paths)
-PATCH_ID = "10_7_1"        # patch_id within the geometry table
-SZA_TOL  = 2.0             # solar-zenith match tolerance (degrees)
-VZA_TOL  = 5.0             # view-zenith match tolerance (degrees)
-
-REQUIRE_QC_REVIEW = True   # require a reviewed QC worksheet before proceeding;
-                           # set False to bypass the manual QC gate entirely
-
-# Paths (repo-relative; geometry table produced by run_single_patch_cube_extract.py)
-_REPO_ROOT  = Path(__file__).resolve().parent.parent          # .../emit-pics
-DATA_ROOT   = _REPO_ROOT / "data"
-PATCH_DIR   = DATA_ROOT / "ROIs" / "patches"
-GEOM_DIR    = DATA_ROOT / "geometry"
-MATCHED_DIR = DATA_ROOT / "matched_pairs"
-QC_DIR      = DATA_ROOT / "qc"
-FIG_DIR     = _REPO_ROOT / "figures"
-
-GEOM_PATH = GEOM_DIR / f"geometry_{PICS_ID}_{PATCH_ID}.csv"
-QC_PATH   = QC_DIR / f"{PICS_ID}_{PATCH_ID}_qc.csv"
-ATTS_PATH = PATCH_DIR / f"patches_{PICS_ID}_atts.csv"
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
-
 import matplotlib
 matplotlib.use("Agg")          # non-interactive backend
 import pandas as pd
 
+from emit_pics import paths
+from emit_pics.config import canonical_token
+from emit_pics.run_config import load_config
 from emit_pics.id_matched_pairs import (
     PAIR_CSV_COLS,
     find_matched_pairs,
@@ -67,6 +40,21 @@ from emit_pics.id_matched_pairs import (
     sniff_delimiter,
 )
 from emit_pics.qc_gate import QCReviewRequired, apply_qc_filter
+
+# ============================================================
+# INPUTS — set the analysis target in run_config.yaml, not here.
+# ============================================================
+cfg = load_config()
+PICS_ID  = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"
+PATCH_ID = cfg.patch
+SZA_TOL  = cfg.sza_tol
+VZA_TOL  = cfg.vza_tol
+REQUIRE_QC_REVIEW = cfg.require_qc_review
+
+# Repo-relative paths — every name is built in emit_pics.paths.
+GEOM_PATH = paths.geometry(PICS_ID, PATCH_ID)
+QC_PATH   = paths.qc_sheet(PICS_ID, PATCH_ID)
+ATTS_PATH = paths.patch_atts(PICS_ID)
 
 
 def load_scenes(geom_path: Path) -> pd.DataFrame:
@@ -113,14 +101,14 @@ def main() -> None:
     n_rad = int(all_pairs["matched_pair"].sum())
     n_rfl = int((matched["t1_has_rfl"] & matched["t2_has_rfl"]).sum())
 
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    paths.FIGURES.mkdir(parents=True, exist_ok=True)
 
     # 3. Write the matched-pairs CSV (all pairs, TRUE/FALSE flag).
     out_csv = all_pairs[PAIR_CSV_COLS].copy()
     out_csv["matched_pair"] = all_pairs["matched_pair"].map(
         {True: "TRUE", False: "FALSE"}
     )
-    csv_path = MATCHED_DIR / f"{PICS_ID}_{PATCH_ID}_matched_pairs.csv"
+    csv_path = paths.matched_pairs(PICS_ID, PATCH_ID)
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     out_csv.to_csv(csv_path, index=False)
     print(f"\nMatched-pairs CSV:  {csv_path}")
@@ -137,7 +125,7 @@ def main() -> None:
 
     # 5. Matched-pairs figure (boxplots drawn from the cached percentiles).
     fig = plot_matched_pairs(scenes, matched, PATCH_ID, SZA_TOL, VZA_TOL)
-    fig_path = FIG_DIR / f"{PICS_ID}_{PATCH_ID}_matched_pairs.png"
+    fig_path = paths.matched_pairs_fig(PICS_ID, PATCH_ID)
     fig.savefig(fig_path, dpi=300, bbox_inches="tight")
     print(f"\nMatched-pairs figure: {fig_path}")
 

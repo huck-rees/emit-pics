@@ -23,7 +23,7 @@ Outputs (repo-relative), one pair per patch::
 
 Prerequisite: run the cube extraction (per-channel CSVs + geometry tables) and
 complete the manual QC step for the patches (any QC runner -> mark each worksheet
-reviewed) first. Edit the inputs below, then run::
+reviewed) first. Set the target in run_config.yaml, then run::
 
     python scripts/run_PICS_allpatches_display_spectra.py
 """
@@ -31,39 +31,14 @@ reviewed) first. Edit the inputs below, then run::
 import sys
 from pathlib import Path
 
-# ============================================================
-# USER-CONFIGURABLE INPUTS
-# ============================================================
-PICS_ID    = "Libya_4"      # underscored site id (input + output file paths)
-PATCH_SIZE = "10"           # patch-size token (first field of patch_id, e.g. 10 km)
-STAT       = "median"       # in-patch statistic to plot: "median" or "mean"
-
-REQUIRE_QC_REVIEW = True    # require a reviewed QC worksheet per patch before
-                            # plotting it; set False to bypass the manual QC gate
-
-# Paths (repo-relative; inputs produced by upstream steps)
-_REPO_ROOT = Path(__file__).resolve().parent.parent           # .../emit-pics
-DATA_ROOT  = _REPO_ROOT / "data"
-PATCH_DIR  = DATA_ROOT / "ROIs" / "patches"
-GEOM_DIR   = DATA_ROOT / "geometry"
-QC_DIR     = DATA_ROOT / "qc"
-RFL_DIR    = DATA_ROOT / "reflectance"
-RAD_DIR    = DATA_ROOT / "radiance"
-FIG_ROOT   = _REPO_ROOT / "figures" / "spectra"
-
-DICT_PATH  = PATCH_DIR / f"patch_EMIT_dict_{PICS_ID}.csv"
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
-
 import matplotlib
 matplotlib.use("Agg")          # non-interactive backend
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from emit_pics import paths
+from emit_pics.config import canonical_token
+from emit_pics.run_config import load_config
 from emit_pics.extract_patch_stats import load_patch_dict
 from emit_pics.id_matched_pairs import sniff_delimiter
 from emit_pics.PICS_allpatches_cube_extract import patch_ids_for_size
@@ -75,6 +50,18 @@ from emit_pics.display_spectra import (
     plot_patch_spectra,
 )
 from emit_pics.qc_gate import QCReviewRequired, apply_qc_filter
+
+# ============================================================
+# INPUTS — set the analysis target in run_config.yaml, not here.
+# ============================================================
+cfg = load_config()
+PICS_ID    = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"
+PATCH_SIZE = cfg.patch_size
+STAT       = cfg.spectra_stat
+REQUIRE_QC_REVIEW = cfg.require_qc_review
+
+# Repo-relative paths — every name is built in emit_pics.paths.
+DICT_PATH = paths.patch_dict(PICS_ID)
 
 
 def load_scenes(geom_path: Path) -> pd.DataFrame:
@@ -96,8 +83,8 @@ def process_patch(pid: str) -> str:
     ``"plotted"``, ``"blocked"`` (QC gate), ``"empty"`` (no survivors / no data),
     or ``"missing"`` (no geometry table).
     """
-    geom_path = GEOM_DIR / f"geometry_{PICS_ID}_{pid}.csv"
-    qc_path   = QC_DIR / f"{PICS_ID}_{pid}_qc.csv"
+    geom_path = paths.geometry(PICS_ID, pid)
+    qc_path   = paths.qc_sheet(PICS_ID, pid)
     if not geom_path.exists():
         print(f"  {pid}: no geometry table ({geom_path.name}); skipped.")
         return "missing"
@@ -116,7 +103,8 @@ def process_patch(pid: str) -> str:
         return "empty"
 
     # Load each surviving scene's spectrum once (radiance anchors the join).
-    loaded, missing = load_patch_spectra(scenes, PICS_ID, pid, RFL_DIR, RAD_DIR)
+    loaded, missing = load_patch_spectra(scenes, PICS_ID, pid,
+                                         paths.RFL_DIR, paths.RAD_DIR)
     if missing:
         print(f"  {pid}: {len(missing)} scene(s) skipped — no radiance CSV.")
     if not loaded:
@@ -130,9 +118,8 @@ def process_patch(pid: str) -> str:
     for key, cfg in PRODUCTS.items():
         fig, plotted = plot_patch_spectra(loaded, cfg, STAT, bad_bands,
                                           PICS_ID, pid)
-        out_dir = FIG_ROOT / cfg["subdir"]
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"{PICS_ID}_{pid}_{STAT}_{key}_spectra.png"
+        out_path = paths.spectra_fig(PICS_ID, pid, STAT, key)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         if plotted:
             fig.savefig(out_path, dpi=FIG_DPI, bbox_inches="tight")
             n_written += 1
@@ -165,7 +152,7 @@ def main() -> None:
     print(f"  blocked (QC not reviewed):{tally['blocked']}")
     print(f"  empty (no survivors/data):{tally['empty']}")
     print(f"  missing geometry table:   {tally['missing']}")
-    print(f"\nFigures -> {FIG_ROOT}")
+    print(f"\nFigures -> {paths.SPECTRA_RFL_DIR.parent}")
     if tally["blocked"]:
         print("  Some patches are not marked reviewed. Complete QC "
               "(run_PICS_allpatches_qc_review.py) or set REQUIRE_QC_REVIEW=False.")

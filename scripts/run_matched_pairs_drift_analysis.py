@@ -28,42 +28,32 @@ Outputs
 Requires the step-6 delta CSVs to carry the SZA_t1/SZA_t2/band_index columns;
 re-run ``scripts/run_delta_calculations.py`` if they predate that schema.
 
-Edit the inputs below, then run::
+Set the analysis target in run_config.yaml, then run::
 
     python scripts/run_matched_pairs_drift_analysis.py
 """
 
 import sys
-from pathlib import Path
+
+from emit_pics import paths
+from emit_pics.run_config import load_config
 
 # ============================================================
-# USER-CONFIGURABLE INPUTS
+# INPUTS — set the analysis target in run_config.yaml, not here.
 # ============================================================
-PATCH_SIZE = "10"           # patch-size token (first field of patch_id, e.g. 10 km)
-ALPHA = 0.05                # Benjamini–Hochberg false-discovery-rate target
-USE_AGGREGATED = True       # True  -> fit the option-A aggregated tables from
-                            #          data/delta_r/aggregated (1 point/acq. pair;
-                            #          dots sized by n_patches). Requires
-                            #          run_PICS_allpatches_aggregate_pairs.py first.
-                            # False -> fit the raw per-patch deltas from
-                            #          data/delta_r/per_patch (pseudo-replicated;
-                            #          dots sized by mean |SZA|).
-INDIVIDUAL_CHANNELS = True  # also render one two-panel scatter per channel (~285 PNGs)
-ONLY_BANDS = None           # e.g. [0, 50, 150] to render a subset for testing; None = all
+cfg = load_config()
+PATCH_SIZE = cfg.patch_size
+ALPHA = cfg.alpha
+USE_AGGREGATED = cfg.use_aggregated
+INDIVIDUAL_CHANNELS = cfg.individual_channels
+ONLY_BANDS = None           # script-local: e.g. [0, 50, 150] to render a subset for testing; None = all
 
-# Paths (repo-relative)
-_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
-DATA_ROOT  = _REPO_ROOT / "data"
-AGG_DIR       = DATA_ROOT / "delta_r" / "aggregated"    # option-A aggregated input
-PER_PATCH_DIR = DATA_ROOT / "delta_r" / "per_patch"     # raw per-patch input
-DRIFT_DIR  = DATA_ROOT / "drift"
-FIG_DIR    = _REPO_ROOT / "figures" / "matched_pairs"
-CHAN_DIR   = FIG_DIR / "individual_channels"
-
-# ============================================================
-# Ensure the project root is importable when run directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
+# Repo-relative paths — every name is built in emit_pics.paths.
+AGG_DIR       = paths.DELTA_AGG_DIR         # option-A aggregated input
+PER_PATCH_DIR = paths.DELTA_PER_PATCH_DIR   # raw per-patch input
+DRIFT_DIR  = paths.DRIFT_DIR
+FIG_DIR    = paths.MATCHED_FIG_DIR
+CHAN_DIR   = paths.CHANNEL_FIG_DIR
 
 import matplotlib
 matplotlib.use("Agg")          # non-interactive backend
@@ -110,7 +100,7 @@ def main() -> None:
     spec_rfl = compute_drift_spectrum(df, "rfl", alpha=ALPHA)
 
     DRIFT_DIR.mkdir(parents=True, exist_ok=True)
-    out_csv = DRIFT_DIR / f"{PATCH_SIZE}_drift.csv"
+    out_csv = paths.drift(PATCH_SIZE)
     pd.concat([spec_rad, spec_rfl], ignore_index=True).to_csv(out_csv, index=False)
     print(f"\nDrift stats CSV -> {out_csv}")
     for name, spec in (("RAD", spec_rad), ("RFL", spec_rfl)):
@@ -123,7 +113,7 @@ def main() -> None:
     # 3. Drift-spectrum figure.
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     fig = plot_drift_spectrum(spec_rad, spec_rfl, patch_size=PATCH_SIZE, alpha=ALPHA)
-    spec_png = FIG_DIR / f"{PATCH_SIZE}_drift_spectrum.png"
+    spec_png = paths.drift_spectrum_fig(PATCH_SIZE)
     fig.savefig(spec_png, dpi=200, bbox_inches="tight")
     plt.close(fig)
     print(f"Drift spectrum  -> {spec_png}")
@@ -144,7 +134,7 @@ def main() -> None:
             fig, wl = plot_channel_scatter(df, bidx, spectra=spectra, size_by=size_by)
             if fig is None:
                 continue
-            path = CHAN_DIR / f"{PATCH_SIZE}_{wl:04.0f}.png"
+            path = paths.channel_fig(PATCH_SIZE, wl)
             fig.savefig(path, dpi=150, bbox_inches="tight")
             plt.close(fig)
             n_written += 1

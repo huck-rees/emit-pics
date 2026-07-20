@@ -26,32 +26,28 @@ Output
 Requires ``scripts/run_delta_calculations.py`` to have produced the per-patch
 delta CSVs (under ``data/delta_r/per_patch/``) for this PICS/size first.
 
-Edit the inputs below, then run::
+Set the analysis target in run_config.yaml, then run::
 
     python scripts/run_PICS_allpatches_aggregate_pairs.py
 """
 
 import sys
-from pathlib import Path
+
+from emit_pics import paths
+from emit_pics.config import canonical_token
+from emit_pics.run_config import load_config
 
 # ============================================================
-# USER-CONFIGURABLE INPUTS
+# INPUTS — set the analysis target in run_config.yaml, not here.
 # ============================================================
-PICS_ID    = "Libya_4"      # underscored site id (input + output file paths)
-PATCH_SIZE = "10"           # patch-size token (first field of patch_id, e.g. 10 km)
+cfg = load_config()
+PICS_ID    = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"
+PATCH_SIZE = cfg.patch_size
 
-# Paths (repo-relative)
-_REPO_ROOT    = Path(__file__).resolve().parent.parent          # .../emit-pics
-DATA_ROOT     = _REPO_ROOT / "data"
-PER_PATCH_DIR = DATA_ROOT / "delta_r" / "per_patch"    # step-6 per-patch deltas
-AGG_DIR       = DATA_ROOT / "delta_r" / "aggregated"   # this stage's output
-OUT_PATH      = AGG_DIR / f"{PICS_ID}_{PATCH_SIZE}_delta.csv"
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
+# Repo-relative paths — every name is built in emit_pics.paths.
+PER_PATCH_DIR = paths.DELTA_PER_PATCH_DIR   # step-6 per-patch deltas
+AGG_DIR       = paths.DELTA_AGG_DIR         # this stage's output
+OUT_PATH      = paths.delta_aggregated(PICS_ID, PATCH_SIZE)
 
 from emit_pics.PICS_allpatches_aggregate_pairs import (
     aggregate_by_pair,

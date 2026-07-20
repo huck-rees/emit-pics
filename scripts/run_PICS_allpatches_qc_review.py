@@ -23,29 +23,26 @@ Controls (mouse buttons or keyboard):
     k = keep      r = remove (reason picker)   1-4 = remove w/ reason
     left/right = prev/next    v = mark patch reviewed    q = quit
 
-Edit the inputs below, then run::
+Set the analysis target in run_config.yaml, then run::
 
     python scripts/run_PICS_allpatches_qc_review.py
 """
 
 import sys
-from pathlib import Path
+
+from emit_pics import paths
+from emit_pics.config import canonical_token
+from emit_pics.run_config import load_config
 
 # ============================================================
-# USER-CONFIGURABLE INPUTS
+# INPUTS — set the analysis target in run_config.yaml, not here.
 # ============================================================
-PICS_ID    = "Libya_4"      # underscored site id
-PATCH_SIZE = "10"           # patch-size token (first field of patch_id, e.g. 10 km)
-SPECTRA_STAT = "median"     # in-patch statistic for the spectra panels
+cfg = load_config()
+PICS_ID    = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"
+PATCH_SIZE = cfg.patch_size # patch-size token (first field of patch_id, e.g. 10 km)
+SPECTRA_STAT = cfg.spectra_stat  # in-patch statistic for the spectra panels
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
-DICT_PATH  = _REPO_ROOT / "data" / "ROIs" / "patches" / f"patch_EMIT_dict_{PICS_ID}.csv"
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
+DICT_PATH = paths.patch_dict(PICS_ID)
 
 # Select an INTERACTIVE matplotlib backend (unlike the batch scripts, which use
 # Agg). Fall back through the common GUI backends; error clearly if none work.
@@ -77,7 +74,7 @@ def main() -> None:
 
     print(f"Reviewing ALL {len(patch_ids)} patch(es) of size {PATCH_SIZE} km "
           f"in {PICS_ID} (backend: {matplotlib.get_backend()}).")
-    reviewer = QCReviewer(_REPO_ROOT, PICS_ID, patch_ids, spectra_stat=SPECTRA_STAT)
+    reviewer = QCReviewer(paths.REPO_ROOT, PICS_ID, patch_ids, spectra_stat=SPECTRA_STAT)
     reviewer.run()
 
 

@@ -9,15 +9,10 @@ handy for eyeballing the site boxes in QGIS. The output is a *derived* file
     python scripts/run_export_pics_gpkg.py
 """
 
-import sys
-from pathlib import Path
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO_ROOT))
-
-OUT_GPKG = _REPO_ROOT / "data" / "ROIs" / "northafrican_pics.gpkg"
-
+from emit_pics import paths
 from emit_pics.config import write_pics_gpkg
+
+OUT_GPKG = paths.pics_gpkg()
 
 
 def main() -> None:

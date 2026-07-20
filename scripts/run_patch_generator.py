@@ -1,36 +1,31 @@
 #!/usr/bin/env python
 """Generate nested, centroid-anchored square patches for a PICS site.
 
-Edit the user-configurable inputs below, then run:
+Set the analysis target in run_config.yaml, then run:
 
     python scripts/run_patch_generator.py
 """
 
 import sys
-from pathlib import Path
 
-# ============================================================
-# USER-CONFIGURABLE INPUTS
-# ============================================================
-PICS_NAME = "Mauritania 2"       # site id (slug / site_name) in config/sites.yaml
-MIN_PATCH_KM = 10           # smallest patch edge length (km)
-INCREMENT_KM = 10           # step between successive patch sizes (km)
-
-# Paths (repo-relative — identical on every machine)
-_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
-OUT_DIR = _REPO_ROOT / "data" / "ROIs" / "patches"
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
-
-from emit_pics.config import pics_geodataframe
+from emit_pics import paths
+from emit_pics.config import canonical_token, pics_geodataframe
+from emit_pics.run_config import load_config
 from emit_pics.patch_generator import (
     generate_patches,
     write_outputs,
 )
+
+# ============================================================
+# INPUTS — set the analysis target in run_config.yaml, not here.
+# ============================================================
+cfg = load_config()
+PICS_NAME = canonical_token(cfg.site)   # canonical filename token, e.g. "Libya_4"
+MIN_PATCH_KM = cfg.min_patch_km         # smallest patch edge length (km)
+INCREMENT_KM = cfg.increment_km         # step between successive patch sizes (km)
+
+# Repo-relative paths — every name is built in emit_pics.paths.
+OUT_DIR = paths.PATCH_DIR
 
 
 def main() -> None:

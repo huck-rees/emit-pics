@@ -18,35 +18,29 @@ For **every** patch of a size across a PICS in one pass, use
 ``scripts/run_PICS_allpatches_qc_products.py`` (this script's batched counterpart); both
 delegate to :func:`emit_pics.qc_report.run_patch_qc`.
 
-Edit the user-configurable inputs below, then run::
+Set the analysis target in run_config.yaml, then run::
 
     python scripts/run_single_patch_qc_products.py
 """
 
-import sys
-from pathlib import Path
+from emit_pics import paths
+from emit_pics.config import canonical_token
+from emit_pics.run_config import load_config
 
 # ============================================================
-# USER-CONFIGURABLE INPUTS
+# INPUTS — set the analysis target in run_config.yaml, not here.
 # ============================================================
-PICS_ID  = "Libya_4"       # underscored site id (input + output file paths)
-PATCH_ID = "10_7_1"        # patch_id within the dictionary / bnds gpkg
+cfg_run = load_config()
+PICS_ID  = canonical_token(cfg_run.site)   # canonical filename/label token, e.g. "Libya_4"
+PATCH_ID = cfg_run.patch
 
-PREFER_CUBE  = True    # render map panels from the cached pixel cube when present
-DRAW_NADIR   = False   # draw the nadir track? (streaming path only; whole-scene VZA)
-SPECTRA_STAT = "median"  # in-patch statistic for the spectra panels ("median"/"mean")
-MAKE_PDF     = True    # write the PDF (False = only refresh the worksheet)
+PREFER_CUBE  = True    # script-local toggle: render map panels from the cached pixel cube when present
+DRAW_NADIR   = False   # script-local toggle: draw the nadir track? (streaming path only; whole-scene VZA)
+SPECTRA_STAT = cfg_run.spectra_stat  # in-patch statistic for the spectra panels ("median"/"mean")
+MAKE_PDF     = True    # script-local toggle: write the PDF (False = only refresh the worksheet)
 
-RAD_SHORT_NAME = "EMITL1BRAD"   # L1B radiance (+ bundled OBS) collection
-RFL_SHORT_NAME = "EMITL2ARFL"   # L2A reflectance (+ MASK) collection
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
+RAD_SHORT_NAME = cfg_run.rad_short_name   # L1B radiance (+ bundled OBS) collection
+RFL_SHORT_NAME = cfg_run.rfl_short_name   # L2A reflectance (+ MASK) collection
 
 import matplotlib
 matplotlib.use("Agg")          # non-interactive backend (write straight to PDF)
@@ -56,7 +50,7 @@ from emit_pics.qc_report import EarthdataLogin, default_qc_config, run_patch_qc
 
 def main() -> None:
     cfg = default_qc_config(
-        _REPO_ROOT, PICS_ID, PATCH_ID,
+        paths.REPO_ROOT, PICS_ID, PATCH_ID,
         rad_short=RAD_SHORT_NAME, rfl_short=RFL_SHORT_NAME,
         prefer_cube=PREFER_CUBE, draw_nadir=DRAW_NADIR,
         spectra_stat=SPECTRA_STAT, make_pdf=MAKE_PDF,

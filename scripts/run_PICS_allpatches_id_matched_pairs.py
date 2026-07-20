@@ -26,8 +26,8 @@ A patch that is missing its geometry table, not yet reviewed, or left with fewer
 than two scenes after QC is reported and skipped so the batch continues.
 
 Prerequisite: the cube extraction (per-scene geometry tables) and the manual QC
-step (reviewed worksheets) must be complete for the patches. Edit the inputs
-below, then run::
+step (reviewed worksheets) must be complete for the patches. Set the target in
+run_config.yaml, then run::
 
     python scripts/run_PICS_allpatches_id_matched_pairs.py
 """
@@ -35,40 +35,14 @@ below, then run::
 import sys
 from pathlib import Path
 
-# ============================================================
-# USER-CONFIGURABLE INPUTS
-# ============================================================
-PICS_ID    = "Libya_4"      # underscored site id (input + output file paths)
-PATCH_SIZE = "10"           # patch-size token (first field of patch_id, e.g. 10 km)
-SZA_TOL    = 2.0            # solar-zenith match tolerance (degrees)
-VZA_TOL    = 5.0            # view-zenith match tolerance (degrees)
-
-REQUIRE_QC_REVIEW = True    # require a reviewed QC worksheet per patch before
-                            # matching; set False to bypass the manual QC gate
-
-# Paths (repo-relative; geometry tables produced by the cube extraction)
-_REPO_ROOT  = Path(__file__).resolve().parent.parent          # .../emit-pics
-DATA_ROOT   = _REPO_ROOT / "data"
-PATCH_DIR   = DATA_ROOT / "ROIs" / "patches"
-GEOM_DIR    = DATA_ROOT / "geometry"
-MATCHED_DIR = DATA_ROOT / "matched_pairs"
-QC_DIR      = DATA_ROOT / "qc"
-FIG_DIR     = _REPO_ROOT / "figures"
-
-DICT_PATH   = PATCH_DIR / f"patch_EMIT_dict_{PICS_ID}.csv"
-ATTS_PATH   = PATCH_DIR / f"patches_{PICS_ID}_atts.csv"
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
-
 import matplotlib
 matplotlib.use("Agg")          # non-interactive backend
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from emit_pics import paths
+from emit_pics.config import canonical_token
+from emit_pics.run_config import load_config
 from emit_pics.extract_patch_stats import load_patch_dict
 from emit_pics.PICS_allpatches_cube_extract import patch_ids_for_size
 from emit_pics.id_matched_pairs import (
@@ -78,6 +52,20 @@ from emit_pics.id_matched_pairs import (
     sniff_delimiter,
 )
 from emit_pics.qc_gate import QCReviewRequired, apply_qc_filter
+
+# ============================================================
+# INPUTS — set the analysis target in run_config.yaml, not here.
+# ============================================================
+cfg = load_config()
+PICS_ID    = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"
+PATCH_SIZE = cfg.patch_size
+SZA_TOL    = cfg.sza_tol
+VZA_TOL    = cfg.vza_tol
+REQUIRE_QC_REVIEW = cfg.require_qc_review
+
+# Repo-relative paths — every name is built in emit_pics.paths.
+DICT_PATH = paths.patch_dict(PICS_ID)
+ATTS_PATH = paths.patch_atts(PICS_ID)
 
 
 def load_scenes(geom_path: Path) -> pd.DataFrame:
@@ -99,8 +87,8 @@ def process_patch(pid: str):
     ``"missing"`` (no geometry table). ``n_rad`` / ``n_rfl`` are the matched-pair
     counts for the attribute-table amendment (``None`` unless produced).
     """
-    geom_path = GEOM_DIR / f"geometry_{PICS_ID}_{pid}.csv"
-    qc_path   = QC_DIR / f"{PICS_ID}_{pid}_qc.csv"
+    geom_path = paths.geometry(PICS_ID, pid)
+    qc_path   = paths.qc_sheet(PICS_ID, pid)
     if not geom_path.exists():
         print(f"  {pid}: no geometry table ({geom_path.name}); skipped.")
         return "missing", None, None
@@ -129,14 +117,14 @@ def process_patch(pid: str):
     out_csv = all_pairs[PAIR_CSV_COLS].copy()
     out_csv["matched_pair"] = all_pairs["matched_pair"].map(
         {True: "TRUE", False: "FALSE"})
-    MATCHED_DIR.mkdir(parents=True, exist_ok=True)
-    csv_path = MATCHED_DIR / f"{PICS_ID}_{pid}_matched_pairs.csv"
+    paths.MATCHED_DIR.mkdir(parents=True, exist_ok=True)
+    csv_path = paths.matched_pairs(PICS_ID, pid)
     out_csv.to_csv(csv_path, index=False)
 
     # SZA/VZA-over-time figure (boxplots drawn from the cached percentiles).
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    paths.FIGURES.mkdir(parents=True, exist_ok=True)
     fig = plot_matched_pairs(scenes, matched, pid, SZA_TOL, VZA_TOL)
-    fig.savefig(FIG_DIR / f"{PICS_ID}_{pid}_matched_pairs.png",
+    fig.savefig(paths.matched_pairs_fig(PICS_ID, pid),
                 dpi=300, bbox_inches="tight")
     plt.close(fig)
 
@@ -205,7 +193,7 @@ def main() -> None:
     print(f"  blocked (QC not reviewed):      {tally['blocked']}")
     print(f"  too few scenes (<2 after QC):   {tally['too_few']}")
     print(f"  missing geometry table:         {tally['missing']}")
-    print(f"\nMatched-pairs CSVs -> {MATCHED_DIR}\nFigures -> {FIG_DIR}")
+    print(f"\nMatched-pairs CSVs -> {paths.MATCHED_DIR}\nFigures -> {paths.FIGURES}")
     if tally["blocked"]:
         print("  Some patches are not marked reviewed. Complete QC "
               "(run_PICS_allpatches_qc_review.py) or set REQUIRE_QC_REVIEW=False.")

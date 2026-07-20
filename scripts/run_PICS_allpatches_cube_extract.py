@@ -46,64 +46,20 @@ the stragglers.  The failed units wrote nothing, so they are correctly seen as
 not-done and retried; geometry tables are *merged* (not overwritten) so the
 skipped scenes' rows survive.  Set ``RESUME = False`` to force a full re-extract.
 
-Edit the user-configurable inputs below, then run::
+Set the analysis target in run_config.yaml, then run::
 
     python scripts/run_PICS_allpatches_cube_extract.py
 """
 
 import sys
-from pathlib import Path
-
-# ============================================================
-# USER-CONFIGURABLE INPUTS
-# ============================================================
-PICS_ID    = "Libya_4"      # underscored site id (input + output file paths)
-PATCH_SIZE = "10"           # patch-size token (first field of patch_id, e.g. 10 km)
-
-CACHE_PIXELS    = True      # write the raw in-patch pixel cube per (patch, scene).
-                            # ON by default: this ONE full-band stream is what makes
-                            # QC and BRDF run offline afterwards. Set False only if you
-                            # are sure you will not QC/BRDF this PICS and want to spare
-                            # the disk (see PIXEL-CUBE CACHE SIZING above: ~55-70 GB for
-                            # a 10 km Libya_4). Streaming stats-only leaves nothing on
-                            # disk to render from, so QC would re-stream every scene.
-WANT_OBS        = True      # stream OBS geometry (SZA/VZA) for the geometry tables
-
-RESUME          = True      # skip (patch, scene) units already written to disk, and
-                            # skip opening any acquisition whose patches are ALL done
-                            # (no lon/lat stream for it). Lets a re-run recover only the
-                            # units a prior run dropped to transient 403s / URL expiry.
-                            # Set False to force a full re-extract of every unit.
-
-FILTER_AGG_FLAG = False     # True -> screen per-channel stats via MASK Aggregate Flag
-MIN_VALID_FRAC  = 0.60      # min in-patch valid fraction (only if filtering)
-
-RAD_SHORT_NAME = "EMITL1BRAD"   # L1B radiance (+ bundled OBS) collection
-RFL_SHORT_NAME = "EMITL2ARFL"   # L2A reflectance (+ MASK) collection
-
-# Paths (repo-relative — identical on every machine)
-_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
-DATA_ROOT = _REPO_ROOT / "data"
-PATCH_DIR = DATA_ROOT / "ROIs" / "patches"
-RAD_DIR   = DATA_ROOT / "radiance"
-RFL_DIR   = DATA_ROOT / "reflectance"
-MASK_DIR  = DATA_ROOT / "mask_summary"
-GEOM_DIR  = DATA_ROOT / "geometry"          # per-scene SZA/VZA tables (matched-pairs input)
-CUBE_DIR  = DATA_ROOT / "pixel_cubes"       # raw in-patch pixel cubes (NetCDF)
-
-DICT_PATH = PATCH_DIR / f"patch_EMIT_dict_{PICS_ID}.csv"
-BNDS_PATH = PATCH_DIR / f"patches_{PICS_ID}_bnds.gpkg"
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
 
 import earthaccess
 import numpy as np
 import pandas as pd
 
+from emit_pics import paths
+from emit_pics.config import canonical_token
+from emit_pics.run_config import load_config
 from emit_pics.id_matched_pairs import (
     STAT_COLS,
     acq_datetime,
@@ -127,6 +83,35 @@ from emit_pics.PICS_allpatches_cube_extract import (
     open_acquisition_grid,
     patch_ids_for_size,
 )
+
+# ============================================================
+# INPUTS — set the analysis target in run_config.yaml, not here.
+# ============================================================
+cfg = load_config()
+PICS_ID    = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"
+PATCH_SIZE = cfg.patch_size
+
+CACHE_PIXELS    = cfg.cache_pixels
+WANT_OBS        = cfg.want_obs
+FILTER_AGG_FLAG = cfg.filter_agg_flag
+MIN_VALID_FRAC  = cfg.min_valid_frac
+RAD_SHORT_NAME  = cfg.rad_short_name
+RFL_SHORT_NAME  = cfg.rfl_short_name
+
+RESUME = True   # script-local toggle: skip (patch, scene) units already written to
+                # disk, and skip opening any acquisition whose patches are ALL done
+                # (no lon/lat stream for it). Lets a re-run recover only the units a
+                # prior run dropped to transient 403s / URL expiry. Set False to
+                # force a full re-extract of every unit.
+
+# Repo-relative paths — every name is built in emit_pics.paths.
+RAD_DIR   = paths.RAD_DIR
+RFL_DIR   = paths.RFL_DIR
+MASK_DIR  = paths.MASK_DIR
+GEOM_DIR  = paths.GEOM_DIR
+CUBE_DIR  = paths.CUBE_DIR
+DICT_PATH = paths.patch_dict(PICS_ID)
+BNDS_PATH = paths.patch_bnds(PICS_ID)
 
 
 def process_patch_cube(cube, patch_id):
@@ -156,13 +141,13 @@ def process_patch_cube(cube, patch_id):
 
     # --- raw pixel cube (always unscreened; the cache's whole point) ---
     if CACHE_PIXELS:
-        cube_path = CUBE_DIR / f"cube_{PICS_ID}_{patch_id}_{ts}.nc"
+        cube_path = paths.pixel_cube(PICS_ID, patch_id, ts)
         write_cube_netcdf(cube, cube_path)
 
     # --- MASK-band summaries (raw) ---
     if cube["mask"] is not None:
         mdf = mask_summaries_from_cube(cube)
-        write_perchannel_csv(mdf, MASK_DIR / f"{PICS_ID}_{patch_id}_{ts}_mask_summary.csv")
+        write_perchannel_csv(mdf, paths.mask_summary(PICS_ID, patch_id, ts))
 
     # --- per-channel stats (the only output gated by screening) ---
     keep = None
@@ -174,10 +159,10 @@ def process_patch_cube(cube, patch_id):
     rad_df, rfl_df = channel_stats_from_cube(cube, keep)
     n_written = 0
     if rfl_df is not None:
-        write_perchannel_csv(rfl_df, RFL_DIR / f"{PICS_ID}_{patch_id}_{ts}_perchannel_rfl.csv")
+        write_perchannel_csv(rfl_df, paths.perchannel(PICS_ID, patch_id, ts, "rfl"))
         n_written += 1
     if rad_df is not None:
-        write_perchannel_csv(rad_df, RAD_DIR / f"{PICS_ID}_{patch_id}_{ts}_perchannel_rad.csv")
+        write_perchannel_csv(rad_df, paths.perchannel(PICS_ID, patch_id, ts, "rad"))
         n_written += 1
 
     return ("produced" if n_written else "missing"), geom_record
@@ -199,9 +184,9 @@ def _unit_outputs_exist(patch_id, ts):
     per-channel CSVs — the only durable artifact a stats-only run leaves.
     """
     if CACHE_PIXELS:
-        return (CUBE_DIR / f"cube_{PICS_ID}_{patch_id}_{ts}.nc").exists()
-    rfl = RFL_DIR / f"{PICS_ID}_{patch_id}_{ts}_perchannel_rfl.csv"
-    rad = RAD_DIR / f"{PICS_ID}_{patch_id}_{ts}_perchannel_rad.csv"
+        return paths.pixel_cube(PICS_ID, patch_id, ts).exists()
+    rfl = paths.perchannel(PICS_ID, patch_id, ts, "rfl")
+    rad = paths.perchannel(PICS_ID, patch_id, ts, "rad")
     return rfl.exists() or rad.exists()
 
 
@@ -216,7 +201,7 @@ def geom_record_from_cube_file(patch_id, ts):
     ``None`` if the cube is missing or carries no OBS geometry (e.g. cached with
     ``WANT_OBS=False``).
     """
-    cube_path = CUBE_DIR / f"cube_{PICS_ID}_{patch_id}_{ts}.nc"
+    cube_path = paths.pixel_cube(PICS_ID, patch_id, ts)
     if not cube_path.exists():
         return None
     with read_cube_netcdf(cube_path) as ds:
@@ -252,7 +237,7 @@ def write_geometry_tables(geom_by_patch):
         if not recs:
             continue
         new_df = pd.DataFrame(recs).drop(columns=["patch_id"])
-        out_path = GEOM_DIR / f"geometry_{PICS_ID}_{pid}.csv"
+        out_path = paths.geometry(PICS_ID, pid)
         if out_path.exists():
             df = pd.concat([pd.read_csv(out_path), new_df], ignore_index=True)
             df = df.drop_duplicates(subset="timestamp", keep="last")

@@ -33,52 +33,20 @@ PIXEL-CUBE CACHE SIZING (per acquisition, per product): a 10 km patch is
 a 40 km patch is ~16x that (~500 MB). Enable CACHE_PIXELS only for the patches the
 granule-set-cover selection actually uses; do not cache all nested sizes en masse.
 
-Edit the user-configurable inputs below, then run::
+Set the analysis target in run_config.yaml, then run::
 
     python scripts/run_single_patch_cube_extract.py
 """
 
 import sys
-from pathlib import Path
-
-# ============================================================
-# USER-CONFIGURABLE INPUTS
-# ============================================================
-PICS_ID  = "Libya_4"       # underscored site id (input + output file paths)
-PATCH_ID = "10_7_1"        # patch_id within the dictionary / bnds gpkg
-
-CACHE_PIXELS    = True      # write the raw in-patch pixel cube to NetCDF
-WANT_OBS        = True      # stream OBS geometry (SZA/VZA) for the geometry table
-
-FILTER_AGG_FLAG = False     # True -> screen per-channel stats via MASK Aggregate Flag
-MIN_VALID_FRAC  = 0.60      # min in-patch valid fraction (only if filtering)
-
-RAD_SHORT_NAME = "EMITL1BRAD"   # L1B radiance (+ bundled OBS) collection
-RFL_SHORT_NAME = "EMITL2ARFL"   # L2A reflectance (+ MASK) collection
-
-# Paths (repo-relative — identical on every machine)
-_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
-DATA_ROOT = _REPO_ROOT / "data"
-PATCH_DIR = DATA_ROOT / "ROIs" / "patches"
-RAD_DIR   = DATA_ROOT / "radiance"
-RFL_DIR   = DATA_ROOT / "reflectance"
-MASK_DIR  = DATA_ROOT / "mask_summary"
-GEOM_DIR  = DATA_ROOT / "geometry"          # per-scene SZA/VZA table (matched-pairs input)
-CUBE_DIR  = DATA_ROOT / "pixel_cubes"       # raw in-patch pixel cubes (NetCDF)
-
-DICT_PATH = PATCH_DIR / f"patch_EMIT_dict_{PICS_ID}.csv"
-BNDS_PATH = PATCH_DIR / f"patches_{PICS_ID}_bnds.gpkg"
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
 
 import earthaccess
 import numpy as np
 import pandas as pd
 
+from emit_pics import paths
+from emit_pics.config import canonical_token
+from emit_pics.run_config import load_config
 from emit_pics.id_matched_pairs import (
     STAT_COLS,
     acq_timestamp,
@@ -99,6 +67,29 @@ from emit_pics.single_patch_cube_extract import (
     mask_summaries_from_cube,
     write_cube_netcdf,
 )
+
+# ============================================================
+# INPUTS — set the analysis target in run_config.yaml, not here.
+# ============================================================
+cfg = load_config()
+PICS_ID  = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"
+PATCH_ID = cfg.patch
+
+CACHE_PIXELS    = cfg.cache_pixels
+WANT_OBS        = cfg.want_obs
+FILTER_AGG_FLAG = cfg.filter_agg_flag
+MIN_VALID_FRAC  = cfg.min_valid_frac
+RAD_SHORT_NAME  = cfg.rad_short_name
+RFL_SHORT_NAME  = cfg.rfl_short_name
+
+# Repo-relative paths — every name is built in emit_pics.paths.
+RAD_DIR   = paths.RAD_DIR
+RFL_DIR   = paths.RFL_DIR
+MASK_DIR  = paths.MASK_DIR
+GEOM_DIR  = paths.GEOM_DIR
+CUBE_DIR  = paths.CUBE_DIR
+DICT_PATH = paths.patch_dict(PICS_ID)
+BNDS_PATH = paths.patch_bnds(PICS_ID)
 
 
 def process_acquisition(acq, patch_geom):
@@ -135,14 +126,14 @@ def process_acquisition(acq, patch_geom):
 
     # --- raw pixel cube (always unscreened; the cache's whole point) ---
     if CACHE_PIXELS:
-        cube_path = CUBE_DIR / f"cube_{PICS_ID}_{PATCH_ID}_{ts}.nc"
+        cube_path = paths.pixel_cube(PICS_ID, PATCH_ID, ts)
         write_cube_netcdf(cube, cube_path)
         print(f"  cached {cube_path.name} ({cube['n_pixels']} px)")
 
     # --- MASK-band summaries (raw) ---
     if cube["mask"] is not None:
         mdf = mask_summaries_from_cube(cube)
-        mpath = MASK_DIR / f"{PICS_ID}_{PATCH_ID}_{ts}_mask_summary.csv"
+        mpath = paths.mask_summary(PICS_ID, PATCH_ID, ts)
         write_perchannel_csv(mdf, mpath)
 
     # --- per-channel stats (the only output gated by screening) ---
@@ -159,12 +150,12 @@ def process_acquisition(acq, patch_geom):
     rad_df, rfl_df = channel_stats_from_cube(cube, keep)
     n_written = 0
     if rfl_df is not None:
-        rfl_path = RFL_DIR / f"{PICS_ID}_{PATCH_ID}_{ts}_perchannel_rfl.csv"
+        rfl_path = paths.perchannel(PICS_ID, PATCH_ID, ts, "rfl")
         write_perchannel_csv(rfl_df, rfl_path)
         print(f"  wrote {rfl_path.name}")
         n_written += 1
     if rad_df is not None:
-        rad_path = RAD_DIR / f"{PICS_ID}_{PATCH_ID}_{ts}_perchannel_rad.csv"
+        rad_path = paths.perchannel(PICS_ID, PATCH_ID, ts, "rad")
         write_perchannel_csv(rad_df, rad_path)
         print(f"  wrote {rad_path.name}")
         n_written += 1
@@ -251,7 +242,7 @@ def main() -> None:
         geom_df = (pd.DataFrame(geom_records)
                    .sort_values("datetime").reset_index(drop=True))
         GEOM_DIR.mkdir(parents=True, exist_ok=True)
-        geom_path = GEOM_DIR / f"geometry_{PICS_ID}_{PATCH_ID}.csv"
+        geom_path = paths.geometry(PICS_ID, PATCH_ID)
         geom_df.to_csv(geom_path, index=False)
         print(f"\nGeometry table:     {geom_path}  ({len(geom_df)} scene(s))")
         amend_dict_geometry(DICT_PATH, geom_records)

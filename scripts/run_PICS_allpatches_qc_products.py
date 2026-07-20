@@ -16,36 +16,33 @@ Set ``MAKE_PDF = False`` to skip the PDFs entirely and only (re)build the
 worksheets — the lean path when verdicts are entered through the interactive
 reviewer ``scripts/run_qc_review.py`` instead of a printed PDF.
 
-Edit the user-configurable inputs below, then run::
+Set the analysis target in run_config.yaml, then run::
 
     python scripts/run_PICS_allpatches_qc_products.py
 """
 
 import sys
-from pathlib import Path
+
+from emit_pics import paths
+from emit_pics.config import canonical_token
+from emit_pics.run_config import load_config
 
 # ============================================================
-# USER-CONFIGURABLE INPUTS
+# INPUTS — set the analysis target in run_config.yaml, not here.
 # ============================================================
-PICS_ID    = "Libya_4"      # underscored site id (input + output file paths)
-PATCH_SIZE = "10"           # patch-size token (first field of patch_id, e.g. 10 km)
+cfg_run = load_config()
+PICS_ID    = canonical_token(cfg_run.site)   # canonical filename/label token, e.g. "Libya_4"
+PATCH_SIZE = cfg_run.patch_size
 
-PREFER_CUBE  = True    # render map panels from the cached pixel cubes (offline)
-DRAW_NADIR   = False   # draw the nadir track? (streaming path only)
-SPECTRA_STAT = "median"  # in-patch statistic for the spectra panels ("median"/"mean")
-MAKE_PDF     = True    # write per-patch PDFs (False = only refresh worksheets)
+PREFER_CUBE  = True    # script-local toggle: render map panels from the cached pixel cubes (offline)
+DRAW_NADIR   = False   # script-local toggle: draw the nadir track? (streaming path only)
+SPECTRA_STAT = cfg_run.spectra_stat  # in-patch statistic for the spectra panels ("median"/"mean")
+MAKE_PDF     = True    # script-local toggle: write per-patch PDFs (False = only refresh worksheets)
 
-RAD_SHORT_NAME = "EMITL1BRAD"   # L1B radiance (+ bundled OBS) collection
-RFL_SHORT_NAME = "EMITL2ARFL"   # L2A reflectance (+ MASK) collection
+RAD_SHORT_NAME = cfg_run.rad_short_name   # L1B radiance (+ bundled OBS) collection
+RFL_SHORT_NAME = cfg_run.rfl_short_name   # L2A reflectance (+ MASK) collection
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent          # .../emit-pics
-DICT_PATH  = _REPO_ROOT / "data" / "ROIs" / "patches" / f"patch_EMIT_dict_{PICS_ID}.csv"
-
-# ============================================================
-# Ensure the project root is on sys.path so 'emit_pics' is
-# importable when running this script directly.
-# ============================================================
-sys.path.insert(0, str(_REPO_ROOT))
+DICT_PATH = paths.patch_dict(PICS_ID)
 
 import matplotlib
 matplotlib.use("Agg")          # non-interactive backend (write straight to PDF)
@@ -72,7 +69,7 @@ def main() -> None:
     for i, pid in enumerate(patch_ids, 1):
         print(f"===== [{i}/{len(patch_ids)}] patch {pid} =====")
         cfg = default_qc_config(
-            _REPO_ROOT, PICS_ID, pid,
+            paths.REPO_ROOT, PICS_ID, pid,
             rad_short=RAD_SHORT_NAME, rfl_short=RFL_SHORT_NAME,
             prefer_cube=PREFER_CUBE, draw_nadir=DRAW_NADIR,
             spectra_stat=SPECTRA_STAT, make_pdf=MAKE_PDF,
