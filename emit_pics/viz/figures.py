@@ -120,26 +120,30 @@ def _add_scalebar(ax, length_m, label, sc):
                           color="black", size_vertical=0,
                           fontproperties=FontProperties(size=7 * sc))
     bar.patch.set(facecolor="white", edgecolor="0.6", alpha=0.75)
+    bar.set_in_layout(False)          # don't let it shrink the equal-aspect panel
     ax.add_artist(bar)
 
 
 def _add_north(ax, sc):
     """North arrow (grid north = up in the projected CRS) in the top-right corner."""
     for lw, color, z in ((3.4 * sc, "white", 5), (1.3 * sc, "black", 6)):
-        ax.annotate("", xy=(0.96, 0.97), xytext=(0.96, 0.87), zorder=z,
-                    xycoords="axes fraction",
-                    arrowprops=dict(arrowstyle="-|>", color=color, lw=lw))
-    ax.text(0.96, 0.985, "N", transform=ax.transAxes, ha="center", va="bottom",
-            fontsize=8 * sc, fontweight="bold", zorder=6,
-            path_effects=[pe.withStroke(linewidth=1.8 * sc, foreground="white")])
+        ann = ax.annotate("", xy=(0.96, 0.97), xytext=(0.96, 0.87), zorder=z,
+                          xycoords="axes fraction",
+                          arrowprops=dict(arrowstyle="-|>", color=color, lw=lw))
+        ann.set_in_layout(False)
+    txt = ax.text(0.96, 0.985, "N", transform=ax.transAxes, ha="center", va="bottom",
+                  fontsize=8 * sc, fontweight="bold", zorder=6,
+                  path_effects=[pe.withStroke(linewidth=1.8 * sc, foreground="white")])
+    txt.set_in_layout(False)
 
 
 def _add_boundary_label(ax, site_proj, label, sc):
     """Label the PICS boundary just inside its top edge."""
     minx, miny, maxx, maxy = site_proj.total_bounds
-    ax.text((minx + maxx) / 2, maxy - 0.02 * (maxy - miny), label,
-            ha="center", va="top", zorder=6, fontsize=8 * sc, fontweight="bold",
-            bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.6", alpha=0.8))
+    txt = ax.text((minx + maxx) / 2, maxy - 0.02 * (maxy - miny), label,
+                  ha="center", va="top", zorder=6, fontsize=8 * sc, fontweight="bold",
+                  bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.6", alpha=0.8))
+    txt.set_in_layout(False)
 
 
 def patch_coverage(patches, site, *, size="double", aspect=0.62,

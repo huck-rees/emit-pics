@@ -20,6 +20,7 @@ Requires the relevant pipeline CSVs to exist (run the pipeline first).
 """
 
 import argparse
+import inspect
 import sys
 
 import pandas as pd
@@ -72,6 +73,10 @@ def main(argv=None) -> int:
     ap.add_argument("--theme", choices=["manuscript", "ppt", "both"], default="both")
     ap.add_argument("--out", default=None,
                     help="write flat into this dir (e.g. the manuscript repo's figures/).")
+    ap.add_argument("--annotate", choices=["both", "count", "none"], default=None,
+                    help="per-cell label for map figures: 'both' (id+count), "
+                         "'count' (cleaner), or 'none'. Applied only to figures "
+                         "that support it.")
     ap.add_argument("--list", action="store_true", help="list known figures and exit.")
     args = ap.parse_args(argv)
 
@@ -89,6 +94,10 @@ def main(argv=None) -> int:
         if kwargs is None:
             print(f"[skip] {key}: {note}")
             continue
+        # Pass CLI overrides only to builders that accept them.
+        params = inspect.signature(spec["build"]).parameters
+        if args.annotate is not None and "annotate" in params:
+            kwargs["annotate"] = args.annotate
         for th in themes:
             with style.theme(th):
                 fig = spec["build"](**kwargs)
