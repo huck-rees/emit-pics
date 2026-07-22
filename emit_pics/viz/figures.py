@@ -16,7 +16,8 @@ import matplotlib.pyplot as plt
 from emit_pics.viz import style
 
 
-def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh"):
+def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
+                   ylim=(-2.5, 2.5)):
     """BRDF pooled drift spectrum gamma(lambda): rad (top) / rfl (bottom) vs wavelength.
 
     Reads ``data/brdf/brdf_drift_spectrum.csv``. Numerically unstable channels are
@@ -34,6 +35,9 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh"):
         Height / width of the whole figure.
     sig_col : str
         Significance column to colour by (``sig_bh`` or ``sig_raw``).
+    ylim : tuple or None
+        Shared y-axis limits (%/yr) for both panels; ``None`` autoscales. Points
+        or CI whiskers outside the range are clipped to the fixed scale.
     """
     df = df[~df["unstable"]].copy()
     sc = style.scale()
@@ -56,12 +60,16 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh"):
                    color=st["color"], zorder=4)
         ax.axhline(0.0, color="k", lw=0.6 * sc, zorder=2)
         ax.set_ylabel(ylab)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
 
     axes[1].set_xlabel("Wavelength (nm)")
     handles = [
         Line2D([0], [0], marker="o", color="0.5", ls="none", mfc="none",
                label="not significant"),
         Line2D([0], [0], marker="o", color="k", ls="none", label="BH-significant"),
+        Line2D([0], [0], marker="|", color="0.7", ls="none",
+               markersize=7 * sc, markeredgewidth=0.9 * sc, label="95% CI"),
     ]
     axes[0].legend(handles=handles, loc="best")
     if style.show_title():
