@@ -40,6 +40,7 @@ drift:
 brdf:
   site_patches:            # one representative patch per PICS; null = skip that site
     Libya_4: "10_7_1"
+    Algeria_3: null
     Algeria_5: null
     Libya_1: null
     Mauritania_1: null
