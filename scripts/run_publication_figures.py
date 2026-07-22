@@ -25,16 +25,36 @@ import sys
 import pandas as pd
 
 from emit_pics import paths
+from emit_pics.run_config import load_config
 from emit_pics.viz import figures, style
 
-#: figure key -> {number (manuscript sequence), csv path fn, builder, width class}.
+
+# --------------------------------------------------------------------- loaders
+# Each loader reads already-generated pipeline outputs and returns
+# ``(build_kwargs, source_note)``, or ``(None, reason)`` if an input is missing.
+def _load_drift_spectrum(cfg):
+    csv = paths.brdf_drift_spectrum()
+    if not csv.exists():
+        return None, f"{csv.name} not found — run the BRDF pipeline first."
+    return {"df": pd.read_csv(csv)}, csv.name
+
+
+def _load_patch_coverage(cfg):
+    from emit_pics.id_granules import load_patches
+    from emit_pics.config import pics_geodataframe
+    bnds = paths.patch_bnds(cfg.site)
+    if not bnds.exists():
+        return None, f"{bnds.name} not found — run scripts/run_id_granules.py first."
+    patches = load_patches(bnds, cfg.search_patch_size_km)
+    return {"patches": patches, "site": pics_geodataframe(cfg.site)}, bnds.name
+
+
+#: figure key -> {number (manuscript sequence), loader, builder}.
 FIGURES = {
-    "drift_spectrum": {
-        "number": "fig03",
-        "csv": paths.brdf_drift_spectrum,
-        "build": figures.drift_spectrum,
-        "size": "double",
-    },
+    "patch_coverage": {"number": "fig01", "load": _load_patch_coverage,
+                       "build": figures.patch_coverage},
+    "drift_spectrum": {"number": "fig03", "load": _load_drift_spectrum,
+                       "build": figures.drift_spectrum},
 }
 
 
@@ -57,21 +77,21 @@ def main(argv=None) -> int:
 
     if args.list:
         for key, spec in FIGURES.items():
-            print(f"  {spec['number']:<7} {key:<18} <- {spec['csv']().name}")
+            print(f"  {spec['number']:<7} {key}")
         return 0
 
+    cfg = load_config()
     themes = ["manuscript", "ppt"] if args.theme == "both" else [args.theme]
     n_written = 0
     for key in args.figures:
         spec = FIGURES[key]
-        csv = spec["csv"]()
-        if not csv.exists():
-            print(f"[skip] {key}: {csv} not found — run the pipeline first.")
+        kwargs, note = spec["load"](cfg)
+        if kwargs is None:
+            print(f"[skip] {key}: {note}")
             continue
-        df = pd.read_csv(csv)
         for th in themes:
             with style.theme(th):
-                fig = spec["build"](df, size=spec["size"])
+                fig = spec["build"](**kwargs)
                 written = style.save(fig, _name(key, spec["number"], th), out_dir=args.out)
             for p in written:
                 print(f"  {key} [{th}] -> {p}")

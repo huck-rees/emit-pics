@@ -18,6 +18,7 @@ dependencies:
   - rioxarray
   - h5netcdf
   - spectral
+  - contextily        # satellite basemap tiles for the coverage-map figure
   - pytest
   - pip
   - pip:
