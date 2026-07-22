@@ -13,7 +13,7 @@ config/           sites.yaml — PICS site definitions (bounding boxes + metadat
 scripts/          Thin command-line runners (read run_config.yaml) + run_pipeline.py orchestrator
 data/             Pipeline inputs/outputs (contents gitignored; folder kept via .gitkeep)
 figures/          Generated figures (contents gitignored; folder kept via .gitkeep)
-docs/             Data dictionary + improvement plan
+docs/             Data dictionary + implementation plans
 notebooks/        Exploration and analysis notebooks
 tests/            Unit tests (pytest)
 ```
@@ -45,6 +45,12 @@ python scripts/run_pipeline.py analyze    # matched pairs → per-wavelength del
 python scripts/run_pipeline.py drift      # cross-PICS per-channel drift fit + figures
 ```
 
+An independent second drift estimate — the pooled multi-site **BRDF** branch (see below) — runs off the same extracted data once its roster is configured:
+
+```bash
+python scripts/run_pipeline.py brdf       # pooled quasi-BRDF drift: assemble → single-channel → spectrum
+```
+
 Add `--dry-run` to any stage to print the exact steps it would run without executing them.
 
 ## Configuration — `run_config.yaml`
@@ -59,6 +65,7 @@ Add `--dry-run` to any stage to print the exact steps it would run without execu
 | `qc` | `require_review` | If true, downstream steps refuse to run until the QC worksheet is reviewed. |
 | `spectra` | `stat` | In-patch statistic to plot/compare (`median` or `mean`). |
 | `drift` | `alpha`, `use_aggregated`, `individual_channels` | BH false-discovery rate; fit aggregated vs raw per-patch deltas; render per-channel figures. |
+| `brdf` | `site_patches`, `exclude_sites`, `target_wl`, `min_scenes`, `n_bootstrap`, `per_site_boot`, `spectrum_n_boot`, `gamma_cap` | Pooled multi-site drift: the roster (one patch per PICS; `null` skips a site), excluded sites, single-channel wavelength, per-site scene floor, the three bootstrap counts, and the unstable-fit cap. Reuses `drift.alpha` + `qc.require_review`. |
 | `extract` | `cache_pixels`, `want_obs`, `filter_agg_flag`, `min_valid_frac` | Cache the raw pixel cube; stream OBS geometry; Aggregate-Flag screening + its threshold. |
 | `granule_search` | `date_start`, `date_end`, `patch_size_km` | Earthdata search window and patch size (step 2). |
 | `patch_gen` | `min_patch_km`, `increment_km` | Nested-patch tiling parameters (step 1). |
@@ -75,9 +82,10 @@ A few **execution-only toggles** stay in the relevant script's header (they chan
 | `extract` | `cube_extract` → `qc_products` | Uses Earthdata; then **review QC**. |
 | `analyze` | `id_matched_pairs` → `delta_calculations` → `aggregate_pairs`\* | Local; QC-gated. |
 | `drift` | `matched_pairs_drift_analysis` | Local; cross-PICS. |
+| `brdf` | `brdf_assemble` → `brdf_single_channel` → `brdf_drift_spectrum` | Local; pooled multi-site; **ignores `--mode`**. |
 | `all` | `setup` → `extract`, then stops for QC review | — |
 
-\* `aggregate_pairs` runs in `allpatches` mode only. **`--mode allpatches`** (default) operates on every patch of `patch_size`; **`--mode single`** operates on just `patch`. Each step is an isolated subprocess that reads `run_config.yaml` itself, so a failure stops the pipeline with that step's own message. In `single` mode `analyze` refuses to run until the patch's QC worksheet is reviewed.
+\* `aggregate_pairs` runs in `allpatches` mode only. **`--mode allpatches`** (default) operates on every patch of `patch_size`; **`--mode single`** operates on just `patch`. The `brdf` stage is always pooled across its roster, so both modes run the same three scripts. Each step is an isolated subprocess that reads `run_config.yaml` itself, so a failure stops the pipeline with that step's own message. In `single` mode `analyze` refuses to run until the patch's QC worksheet is reviewed.
 
 You can always run the underlying scripts directly (e.g. `python scripts/run_delta_calculations.py`) for granular control — the orchestrator just calls them in order.
 
@@ -102,6 +110,7 @@ You can always run the underlying scripts directly (e.g. `python scripts/run_del
 | `delta_calculations` | Per-wavelength **t1→t2** % change across matched pairs (band-order join; tidy long CSV). |
 | `PICS_allpatches_aggregate_pairs` | **Option A** — collapse each acquisition pair's spatial-replicate patches to one median ΔR per channel, removing pseudo-replication before the fit. |
 | `matched_pairs_drift_analysis` | Cross-PICS drift: per-channel Theil–Sen slope of ΔR vs Δt, Kendall-τ + BH-FDR significance, and figures. |
+| `brdf_drift` | Pooled multi-site quasi-BRDF drift: per-site + joint `(α+β·cosθ)(1+γt)` fits, bootstraps, the shared-drift consistency check, and the design-table assembly. |
 
 The function libraries are side-effect-free; each is driven by a thin runner in `scripts/`.
 
@@ -131,6 +140,18 @@ Steps 1–2 are global to a PICS site; steps 3–6 are per-patch analyses branch
 
 **Optional:** `run_export_pics_gpkg.py` regenerates `data/ROIs/northafrican_pics.gpkg` from `config/sites.yaml` for QGIS. It is a *derived* output (gitignored), never a pipeline input.
 
+### BRDF — pooled multi-site drift (parallel branch)
+
+An **independent second drift estimate** that consumes the same extracted data (per-channel stats + geometry + QC gate) but answers the drift question with a regression instead of matched pairs. Every PICS contributes **one representative patch = one "site"**; all sites share a single drift rate while each keeps its own brightness/BRDF terms, fitting the `2S+1` model `ρ̂ₛ = (αₛ + βₛ·cosθ)(1 + γt)` (`t` = years since the earliest scene across all sites, a common clock; `γ` = the one shared drift). Geometry is *modelled out* via the `cosθ` term rather than matched away. Configure the roster in the `run_config.yaml` `brdf:` block, then run the three scripts (or `run_pipeline.py brdf`):
+
+9. **`run_brdf_assemble.py`** — Resolve the roster; build the pooled per-scene **design table** (per site: QC-surviving, reflectance-bearing scenes with median ρ at the channel nearest `brdf.target_wl`; common clock `t`, `g = cos SZA`); apply the `brdf.min_scenes` floor (**warns** on drops). Writes `data/brdf/brdf_design.csv`, `data/brdf/brdf_leverage.csv`, and the leverage/confounding scatter.
+
+10. **`run_brdf_single_channel.py`** — At the single channel nearest `brdf.target_wl`: the **shared-drift consistency check** (each site's standalone γ + bootstrap CI; a `pass`/`marginal`/`fail` verdict on whether all CIs overlap — computed, **warned loudly if not clean, but never blocking**, and recorded in the sidecar); the joint pooled fit (per-site α/β + shared γ); the stratified within-site bootstrap of γ; and the quasi-BRDF-correction collapse figure. Writes `brdf_persite_gamma_{wl}nm.csv`, `brdf_joint_fit_{wl}nm.csv`, `brdf_bootstrap_gamma_{wl}nm.csv` + three figures.
+
+11. **`run_brdf_drift_spectrum.py`** — Repeat the pooled joint fit at **every** EMIT channel (water-vapor bands excluded), with a two-sided bootstrap p per channel and **Benjamini–Hochberg** FDR across channels (per product), plus an unstable-channel flag (`brdf.gamma_cap`). Writes `data/brdf/brdf_drift_spectrum.csv` (the multi-site analog of the matched-pairs drift spectrum) + BH-corrected and raw figures.
+
+> **Trust the pooled γ only if the consistency check is clean.** A `fail` (per-site CIs disjoint) means the pooled value blends differing true drifts — a red flag, not a result; a `marginal` warrants caution. Mauritania 2 is excluded by default (too few QC-surviving scenes to constrain γ); the `min_scenes` floor enforces this generally.
+
 ## Provenance
 
 Every data-product write also emits a sidecar `<output>.json` recording the UTC timestamp, git commit / branch / dirty flag, script name, Python + key package versions, and the exact `run_config` used. A CSV on disk can't tell you how it was made; its sidecar can — so every result is traceable to an exact code state. Sidecars live beside the (gitignored) data and travel with it when results are archived (e.g. to Zenodo).
@@ -149,4 +170,4 @@ Both cube-extract runners can persist the raw, **unscreened** in-patch pixel cub
 pytest
 ```
 
-Unit tests cover the core science (band-order delta join, Theil–Sen / Kendall / BH drift statistics, matched-pair detection, the QC gate), the config/paths/pipeline plumbing, and a golden regression of the delta→drift chain against a known injected drift. Run them before and after any refactor to confirm the numbers are unchanged.
+Unit tests cover the core science (band-order delta join, Theil–Sen / Kendall / BH drift statistics, matched-pair detection, the QC gate, and the BRDF fits — verified by recovering a known injected `(αₛ, βₛ, γ)` — plus the shared-drift consistency verdicts), the config/paths/pipeline plumbing, and a golden regression of the delta→drift chain against a known injected drift. Run them before and after any refactor to confirm the numbers are unchanged.

@@ -30,6 +30,18 @@ def test_drift_is_the_cross_pics_step():
     assert pipeline.scripts_for("drift", "allpatches") == ["run_matched_pairs_drift_analysis.py"]
 
 
+def test_brdf_stage_is_pooled_and_mode_independent():
+    expected = ["run_brdf_assemble.py", "run_brdf_single_channel.py",
+                "run_brdf_drift_spectrum.py"]
+    # BRDF is always pooled -> identical scripts in both modes, in order.
+    assert pipeline.scripts_for("brdf", "single") == expected
+    assert pipeline.scripts_for("brdf", "allpatches") == expected
+
+
+def test_brdf_is_last_in_stage_order():
+    assert pipeline.STAGE_ORDER[-1] == "brdf"
+
+
 def test_invalid_stage_or_mode_raises():
     with pytest.raises(ValueError):
         pipeline.scripts_for("nope", "single")

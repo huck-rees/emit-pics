@@ -9,11 +9,15 @@ Stages (run in this order, one at a time):
               -> then inspect QC and mark the worksheet reviewed
     analyze   id_matched_pairs + delta_calculations [+ aggregate_pairs (allpatches)]
     drift     matched_pairs_drift_analysis         (cross-PICS)
+    brdf      assemble + single_channel + drift_spectrum   (pooled multi-site)
     all       setup -> extract, then stop for the manual QC review
 
 Modes:
     --mode allpatches   every patch of cfg.patch_size            (default)
     --mode single       just cfg.patch (one-off inspection)
+
+The `brdf` stage is always pooled across the run_config.yaml `brdf:` roster, so
+it ignores --mode (both modes run the same three scripts).
 
 The QC gate is manual and enforced: in single mode `analyze` refuses to run
 until the patch's QC worksheet is marked reviewed. Each step is a separate
@@ -99,6 +103,8 @@ def main(argv=None) -> int:
         print("\nAnalyze done. Next: python scripts/run_pipeline.py drift")
     elif args.stage == "drift":
         print("\nDrift analysis done. See data/drift/ and figures/matched_pairs/.")
+    elif args.stage == "brdf":
+        print("\nBRDF pooled drift done. See data/brdf/ and figures/brdf/.")
     return 0
 
 

@@ -32,19 +32,21 @@ MATCHED_DIR = DATA / "matched_pairs"
 DELTA_PER_PATCH_DIR = DATA / "delta_r" / "per_patch"
 DELTA_AGG_DIR = DATA / "delta_r" / "aggregated"
 DRIFT_DIR = DATA / "drift"
+BRDF_DIR = DATA / "brdf"
 
 SPECTRA_RFL_DIR = FIGURES / "spectra" / "reflectance"
 SPECTRA_RAD_DIR = FIGURES / "spectra" / "radiance"
 MATCHED_FIG_DIR = FIGURES / "matched_pairs"
 CHANNEL_FIG_DIR = MATCHED_FIG_DIR / "individual_channels"
+BRDF_FIG_DIR = FIGURES / "brdf"
 
 _PRODUCT_DIR = {"rad": RAD_DIR, "rfl": RFL_DIR}
 _SPECTRA_DIR = {"rad": SPECTRA_RAD_DIR, "rfl": SPECTRA_RFL_DIR}
 
 _ALL_OUTPUT_DIRS = (
     PATCH_DIR, RAD_DIR, RFL_DIR, MASK_DIR, GEOM_DIR, CUBE_DIR, QC_DIR,
-    MATCHED_DIR, DELTA_PER_PATCH_DIR, DELTA_AGG_DIR, DRIFT_DIR, ROIS_DIR,
-    SPECTRA_RFL_DIR, SPECTRA_RAD_DIR, MATCHED_FIG_DIR, CHANNEL_FIG_DIR,
+    MATCHED_DIR, DELTA_PER_PATCH_DIR, DELTA_AGG_DIR, DRIFT_DIR, BRDF_DIR, ROIS_DIR,
+    SPECTRA_RFL_DIR, SPECTRA_RAD_DIR, MATCHED_FIG_DIR, CHANNEL_FIG_DIR, BRDF_FIG_DIR,
 )
 
 
@@ -132,6 +134,39 @@ def drift(size) -> Path:
     return DRIFT_DIR / f"{size}_drift.csv"
 
 
+# --------------------------------------------------- BRDF pooled multi-site drift
+# Pooled across many sites, so these are NOT keyed by a single site/patch token.
+# Single-channel products carry the target wavelength; the spectrum spans all bands.
+def brdf_design() -> Path:
+    """Pooled per-scene design table (site, patch, t, g, rho) — ``brdf_design.csv``."""
+    return BRDF_DIR / "brdf_design.csv"
+
+
+def brdf_leverage() -> Path:
+    """Per-site scene-count / geometry-leverage summary (``brdf_leverage.csv``)."""
+    return BRDF_DIR / "brdf_leverage.csv"
+
+
+def brdf_persite_gamma(wl) -> Path:
+    """Per-site standalone-gamma table for the shared-drift check (§4b)."""
+    return BRDF_DIR / f"brdf_persite_gamma_{wl:.0f}nm.csv"
+
+
+def brdf_joint_fit(wl) -> Path:
+    """Joint pooled fit: per-site alpha/beta + the one shared gamma (§5)."""
+    return BRDF_DIR / f"brdf_joint_fit_{wl:.0f}nm.csv"
+
+
+def brdf_bootstrap_gamma(wl) -> Path:
+    """Bootstrapped pooled shared-gamma with CI, per product (§7)."""
+    return BRDF_DIR / f"brdf_bootstrap_gamma_{wl:.0f}nm.csv"
+
+
+def brdf_drift_spectrum() -> Path:
+    """Pooled shared-gamma per EMIT channel (``brdf_drift_spectrum.csv``, §8)."""
+    return BRDF_DIR / "brdf_drift_spectrum.csv"
+
+
 # ------------------------------------------------------------------------ figures
 def matched_pairs_fig(site, patch) -> Path:
     """SZA/VZA-over-time figure (``{tok}_{patch}_matched_pairs.png``)."""
@@ -156,6 +191,32 @@ def drift_spectrum_fig(size) -> Path:
 def channel_fig(size, wavelength) -> Path:
     """Per-channel ΔR-vs-Δt figure (``{size}_{wavelength:04.0f}.png``)."""
     return CHANNEL_FIG_DIR / f"{size}_{wavelength:04.0f}.png"
+
+
+# --------------------------------------------------- BRDF pooled multi-site figures
+def brdf_leverage_fig(wl) -> Path:
+    """Pooled leverage / confounding scatter (§4a)."""
+    return BRDF_FIG_DIR / f"brdf_leverage_scatter_{wl:.0f}nm.png"
+
+
+def brdf_persite_gamma_fig(wl) -> Path:
+    """Per-site standalone-gamma forest plot (shared-drift check, §4b)."""
+    return BRDF_FIG_DIR / f"brdf_persite_gamma_{wl:.0f}nm.png"
+
+
+def brdf_corrected_fig(wl) -> Path:
+    """Quasi-BRDF-corrected collapse onto the shared drift line (§6)."""
+    return BRDF_FIG_DIR / f"brdf_corrected_{wl:.0f}nm.png"
+
+
+def brdf_bootstrap_fig(wl) -> Path:
+    """Pooled shared-gamma bootstrap histogram (§7)."""
+    return BRDF_FIG_DIR / f"brdf_bootstrap_{wl:.0f}nm.png"
+
+
+def brdf_drift_spectrum_fig(kind) -> Path:
+    """Pooled drift spectrum figure; ``kind`` = ``'bh'`` | ``'raw'`` (§8)."""
+    return BRDF_FIG_DIR / f"brdf_drift_spectrum_{kind}.png"
 
 
 def ensure_dirs():

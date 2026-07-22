@@ -47,6 +47,34 @@ def test_figure_filenames():
         "Libya_4_10km_EMITgranule_coverage.png"
 
 
+def test_brdf_data_filenames():
+    assert paths.brdf_design().name == "brdf_design.csv"
+    assert paths.brdf_leverage().name == "brdf_leverage.csv"
+    assert paths.brdf_persite_gamma(858.0).name == "brdf_persite_gamma_858nm.csv"
+    assert paths.brdf_joint_fit(858.0).name == "brdf_joint_fit_858nm.csv"
+    assert paths.brdf_bootstrap_gamma(858.0).name == "brdf_bootstrap_gamma_858nm.csv"
+    assert paths.brdf_drift_spectrum().name == "brdf_drift_spectrum.csv"
+    # wavelength is rounded to a whole nm in the token.
+    assert paths.brdf_joint_fit(857.6).name == "brdf_joint_fit_858nm.csv"
+
+
+def test_brdf_figure_filenames():
+    assert paths.brdf_leverage_fig(858.0).name == "brdf_leverage_scatter_858nm.png"
+    assert paths.brdf_persite_gamma_fig(858.0).name == "brdf_persite_gamma_858nm.png"
+    assert paths.brdf_corrected_fig(858.0).name == "brdf_corrected_858nm.png"
+    assert paths.brdf_bootstrap_fig(858.0).name == "brdf_bootstrap_858nm.png"
+    assert paths.brdf_drift_spectrum_fig("bh").name == "brdf_drift_spectrum_bh.png"
+    assert paths.brdf_drift_spectrum_fig("raw").name == "brdf_drift_spectrum_raw.png"
+
+
+def test_brdf_paths_land_in_expected_dirs():
+    assert paths.brdf_design().parent == paths.BRDF_DIR
+    assert paths.brdf_drift_spectrum().parent == paths.BRDF_DIR
+    assert paths.brdf_persite_gamma(858.0).parent == paths.BRDF_DIR
+    assert paths.brdf_leverage_fig(858.0).parent == paths.BRDF_FIG_DIR
+    assert paths.brdf_drift_spectrum_fig("bh").parent == paths.BRDF_FIG_DIR
+
+
 def test_site_spelling_is_normalised():
     # Any accepted spelling resolves to the same on-disk file.
     for spelling in ["libya_4", "Libya 4", "Libya_4"]:

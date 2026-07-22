@@ -19,7 +19,7 @@ from emit_pics.paths import REPO_ROOT
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 
 MODES = ("single", "allpatches")
-STAGE_ORDER = ("setup", "extract", "analyze", "drift")
+STAGE_ORDER = ("setup", "extract", "analyze", "drift", "brdf")
 
 #: stage -> ordered list of ``(single_patch_script, allpatches_script)``.
 STEPS = {
@@ -38,6 +38,14 @@ STEPS = {
     ],
     "drift": [
         ("run_matched_pairs_drift_analysis.py", "run_matched_pairs_drift_analysis.py"),
+    ],
+    # BRDF pooled multi-site drift: always pooled, so it ignores the single/
+    # allpatches fork — the same three scripts fill both slots. Its roster comes
+    # from the run_config.yaml `brdf:` block, not cfg.patch / cfg.patch_size.
+    "brdf": [
+        ("run_brdf_assemble.py", "run_brdf_assemble.py"),
+        ("run_brdf_single_channel.py", "run_brdf_single_channel.py"),
+        ("run_brdf_drift_spectrum.py", "run_brdf_drift_spectrum.py"),
     ],
 }
 

@@ -33,6 +33,24 @@ drift:
   use_aggregated: true   # fit the option-A aggregated tables (vs raw per-patch)
   individual_channels: true
 
+# --- BRDF / quasi-BRDF pooled multi-site drift ---
+# Pooled multi-site drift: every PICS contributes ONE representative patch (one
+# patch = one "site"), all sites share a single drift rate gamma while each keeps
+# its own brightness/BRDF terms. Ignores the single/allpatches mode fork.
+brdf:
+  site_patches:            # one representative patch per PICS; null = skip that site
+    Libya_4: "10_7_1"
+    Algeria_5: null
+    Libya_1: null
+    Mauritania_1: null
+  exclude_sites: [Mauritania_2]   # dropped by design (too few QC-surviving scenes)
+  target_wl: 858.0         # nm; nearest channel is used for the single-channel fit
+  min_scenes: 4            # per-site post-QC floor; sites below are dropped
+  n_bootstrap: 1000        # resamples for the pooled shared-gamma CI
+  per_site_boot: 500       # resamples for each site's standalone-gamma CI (§4b)
+  spectrum_n_boot: 300     # per-channel resamples for the gamma(lambda) spectrum (§8)
+  gamma_cap: 500.0         # %/yr; |gamma| or CI half-width beyond this = degenerate fit
+
 # --- pixel extraction ---
 extract:
   cache_pixels: true

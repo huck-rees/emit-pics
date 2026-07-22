@@ -59,3 +59,43 @@ def test_as_dict_roundtrips_fields(tmp_path):
     assert d["site"] == "Libya_4"
     assert d["patch"] == "10_7_1"
     assert "sza_tol" in d          # flat dict for provenance sidecars
+
+
+# ---------------------------------------------------------------------- BRDF block
+def test_brdf_defaults_when_block_absent(tmp_path):
+    p = tmp_path / "rc.yaml"
+    p.write_text("site: Libya_4\npatch: '10_7_1'\npatch_size: '10'\n", encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.brdf_site_patches == {}
+    assert cfg.brdf_exclude_sites == []
+    assert cfg.brdf_target_wl == 858.0
+    assert cfg.brdf_min_scenes == 4
+    assert cfg.brdf_n_bootstrap == 1000
+    assert cfg.brdf_per_site_boot == 500
+    assert cfg.brdf_spectrum_n_boot == 300
+    assert cfg.brdf_gamma_cap == 500.0
+
+
+def test_brdf_roster_drops_null_patches_and_reads_values(tmp_path):
+    p = tmp_path / "rc.yaml"
+    p.write_text(
+        "site: Libya_4\n"
+        'patch: "10_7_1"\n'
+        'patch_size: "10"\n'
+        "brdf:\n"
+        "  site_patches: {Libya_4: '10_7_1', Algeria_5: null, Libya_1: '5_3_2'}\n"
+        "  exclude_sites: [Mauritania_2]\n"
+        "  target_wl: 660.0\n"
+        "  min_scenes: 6\n"
+        "  spectrum_n_boot: 50\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(p)
+    # null-patch sites are dropped; only mapped sites survive, coerced to str.
+    assert cfg.brdf_site_patches == {"Libya_4": "10_7_1", "Libya_1": "5_3_2"}
+    assert cfg.brdf_exclude_sites == ["Mauritania_2"]
+    assert cfg.brdf_target_wl == 660.0
+    assert cfg.brdf_min_scenes == 6
+    assert cfg.brdf_spectrum_n_boot == 50
+    # BRDF fields ride along in the flat provenance dict.
+    assert load_config(p).as_dict()["brdf_target_wl"] == 660.0

@@ -12,7 +12,7 @@ The YAML is nested for readability; this loader flattens it into a typed
 key (``site`` / ``patch`` / ``patch_size``) is missing.
 """
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import yaml
@@ -43,6 +43,16 @@ class RunConfig:
     alpha: float = 0.05
     use_aggregated: bool = True
     individual_channels: bool = True
+    # --- BRDF / quasi-BRDF pooled multi-site drift ---
+    # (shares the global drift.alpha and qc.require_review knobs)
+    brdf_site_patches: dict = field(default_factory=dict)
+    brdf_exclude_sites: list = field(default_factory=list)
+    brdf_target_wl: float = 858.0
+    brdf_min_scenes: int = 4
+    brdf_n_bootstrap: int = 1000
+    brdf_per_site_boot: int = 500
+    brdf_spectrum_n_boot: int = 300
+    brdf_gamma_cap: float = 500.0
     # --- extraction ---
     cache_pixels: bool = True
     want_obs: bool = True
@@ -92,6 +102,12 @@ def load_config(path=None) -> RunConfig:
     products, matching = sec("products"), sec("matching")
     qc, spectra, drift = sec("qc"), sec("spectra"), sec("drift")
     extract, gs, pg = sec("extract"), sec("granule_search"), sec("patch_gen")
+    brdf = sec("brdf")
+
+    # BRDF roster: keep only sites with a patch id set (drop null/blank entries).
+    brdf_site_patches = {str(s): str(p) for s, p in (brdf.get("site_patches") or {}).items()
+                         if p not in (None, "")}
+    brdf_exclude_sites = [str(s) for s in (brdf.get("exclude_sites") or [])]
 
     return RunConfig(
         site=str(raw["site"]),
@@ -106,6 +122,14 @@ def load_config(path=None) -> RunConfig:
         alpha=float(drift.get("alpha", 0.05)),
         use_aggregated=bool(drift.get("use_aggregated", True)),
         individual_channels=bool(drift.get("individual_channels", True)),
+        brdf_site_patches=brdf_site_patches,
+        brdf_exclude_sites=brdf_exclude_sites,
+        brdf_target_wl=float(brdf.get("target_wl", 858.0)),
+        brdf_min_scenes=int(brdf.get("min_scenes", 4)),
+        brdf_n_bootstrap=int(brdf.get("n_bootstrap", 1000)),
+        brdf_per_site_boot=int(brdf.get("per_site_boot", 500)),
+        brdf_spectrum_n_boot=int(brdf.get("spectrum_n_boot", 300)),
+        brdf_gamma_cap=float(brdf.get("gamma_cap", 500.0)),
         cache_pixels=bool(extract.get("cache_pixels", True)),
         want_obs=bool(extract.get("want_obs", True)),
         filter_agg_flag=bool(extract.get("filter_agg_flag", False)),

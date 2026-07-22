@@ -7,7 +7,8 @@ recording the git commit, timestamp, package versions, and `run_config` used.
 
 **Conventions.** `{site}` is the canonical site token (e.g. `Libya_4`); `{patch}`
 is a patch id (e.g. `10_7_1`); `{size}` is the patch-size token in km (e.g. `10`);
-`{ts}` is an acquisition timestamp `YYYYMMDDThhmmss`.
+`{ts}` is an acquisition timestamp `YYYYMMDDThhmmss`; `{wl}` is the BRDF target
+wavelength rounded to a whole nm (e.g. `858`).
 
 **Units.** Wavelength — nm · Radiance — µW/cm²/sr/nm (EMIT L1B) · Reflectance —
 unitless (EMIT L2A) · Angles (SZA/VZA) — degrees · Time separation — days ·
@@ -32,6 +33,12 @@ Drift rate — %/year · Deltas — percent.
 | `data/delta_r/per_patch/{site}_{patch}_delta.csv` | Per-patch per-wavelength deltas (step 6) |
 | `data/delta_r/aggregated/{site}_{size}_delta.csv` | Per-PICS aggregated deltas (step 7) |
 | `data/drift/{size}_drift.csv` | Cross-PICS per-channel drift stats (step 8) |
+| `data/brdf/brdf_design.csv` | Pooled multi-site per-scene design table (BRDF step 9) |
+| `data/brdf/brdf_leverage.csv` | Per-site scene-count / geometry-leverage summary (BRDF step 9) |
+| `data/brdf/brdf_persite_gamma_{wl}nm.csv` | Per-site standalone γ + CI, shared-drift check (BRDF step 10) |
+| `data/brdf/brdf_joint_fit_{wl}nm.csv` | Joint pooled fit: per-site α/β + shared γ (BRDF step 10) |
+| `data/brdf/brdf_bootstrap_gamma_{wl}nm.csv` | Bootstrapped pooled shared γ + CI (BRDF step 10) |
+| `data/brdf/brdf_drift_spectrum.csv` | Pooled shared γ per EMIT channel (BRDF step 11) |
 
 ---
 
@@ -184,3 +191,106 @@ One row per `(band × product)`; absorption-band rows carry NaN stats.
 | `raw_significant` | bool | `p_value ≤ alpha`. |
 | `bh_qvalue` | float | Benjamini–Hochberg adjusted p-value. |
 | `bh_significant` | bool | BH-significant at the FDR target (`drift.alpha`). |
+
+---
+
+# BRDF — pooled multi-site drift
+
+An independent second drift estimate (see the README's *BRDF* section). Pooled
+across the `brdf:` roster, so these are **not** keyed by a single site/patch; the
+single-channel products carry the target wavelength `{wl}`. `γ` (gamma) is the
+shared drift rate; per-site `α`/`β` are the brightness/BRDF nuisance terms.
+
+## 9. BRDF design table — `brdf_design.csv`
+
+One row per pooled scene (the gated fit set). `g` and `t` are the model inputs.
+
+| Column | Type/unit | Meaning |
+| --- | --- | --- |
+| `site` | text | Canonical PICS token. |
+| `patch` | text | Representative patch id for the site. |
+| `timestamp` | `YYYYMMDDThhmmss` | Scene timestamp. |
+| `datetime` | ISO datetime | Acquisition time. |
+| `sza_mean` | degrees | In-patch mean solar-zenith angle. |
+| `scene_id` | text | RAD GranuleUR. |
+| `rho_rad` | µW/cm²/sr/nm | Median radiance at the channel nearest `brdf.target_wl`. |
+| `rho_rfl` | unitless | Median reflectance at that channel. |
+| `t` | years | Time since the earliest scene across all sites (common clock). |
+| `g` | unitless | `cos(SZA)`. |
+
+## 10. BRDF leverage summary — `brdf_leverage.csv`
+
+One row per site (all roster sites that produced scenes; `kept` flags gate survival).
+
+| Column | Type/unit | Meaning |
+| --- | --- | --- |
+| `site` | text | Canonical PICS token. |
+| `n` | int | Post-QC scene count. |
+| `first`, `last` | date | First / last scene date. |
+| `sza_lo`, `sza_hi` | degrees | SZA range. |
+| `cosSZA_span` | unitless | `max(cos SZA) − min(cos SZA)`. |
+| `t_span_yr` | years | Time span of the site's scenes. |
+| `corr_g_t` | −1…+1 | `corr(cos SZA, t)`; near ±1 = geometry-confounded (NaN if <3 scenes). |
+| `kept` | bool | Survived the `brdf.min_scenes` floor (used in the fit). |
+
+## 11. BRDF per-site standalone γ — `brdf_persite_gamma_{wl}nm.csv`
+
+One row per `(product × site)`. The shared-drift consistency check (`pass` /
+`marginal` / `fail`) is recorded in this file's provenance sidecar under
+`extra.brdf_consistency`.
+
+| Column | Type/unit | Meaning |
+| --- | --- | --- |
+| `product` | text | `rad` or `rfl`. |
+| `site` | text | Canonical PICS token. |
+| `n` | int | Scene count. |
+| `gamma_pct_yr` | %/year | Site's standalone drift rate. |
+| `ci_lo`, `ci_hi` | %/year | Bootstrap 95% CI (`brdf.per_site_boot` resamples). |
+
+## 12. BRDF joint fit — `brdf_joint_fit_{wl}nm.csv`
+
+One row per `(product × site)`; `gamma_pct_yr` is the single shared value repeated
+across the product's rows.
+
+| Column | Type/unit | Meaning |
+| --- | --- | --- |
+| `product` | text | `rad` or `rfl`. |
+| `site` | text | Canonical PICS token. |
+| `alpha` | product units | Per-site brightness term. |
+| `beta` | product units | Per-site geometry (BRDF) term. |
+| `gamma_pct_yr` | %/year | Shared pooled drift rate. |
+| `success` | bool | Least-squares convergence flag. |
+| `n` | int | Scenes in the pooled fit. |
+
+## 13. BRDF bootstrap γ — `brdf_bootstrap_gamma_{wl}nm.csv`
+
+One row per product — the pooled shared γ with its stratified within-site bootstrap
+CI (`brdf.n_bootstrap` resamples).
+
+| Column | Type/unit | Meaning |
+| --- | --- | --- |
+| `product` | text | `rad` or `rfl`. |
+| `gamma_pct_yr` | %/year | Pooled shared drift rate (point estimate). |
+| `boot_se` | %/year | Bootstrap standard error. |
+| `ci_lo`, `ci_hi` | %/year | Bootstrap 95% CI (straddling 0 ⇒ no significant drift). |
+| `n` | int | Scenes in the fit. |
+| `n_sites` | int | Sites in the fit. |
+
+## 14. BRDF drift spectrum — `brdf_drift_spectrum.csv`
+
+One row per `(product × fit channel)` — the multi-site analog of the matched-pairs
+drift spectrum (§8). Water-vapor bands are not fit (absent here, shaded in figures).
+
+| Column | Type/unit | Meaning |
+| --- | --- | --- |
+| `product` | text | `rad` or `rfl`. |
+| `band_index` | int | EMIT channel index. |
+| `wavelength` | nm | Channel wavelength. |
+| `gamma_pct_yr` | %/year | Pooled shared drift rate at this channel. |
+| `ci_lo_pct_yr`, `ci_hi_pct_yr` | %/year | Bootstrap 95% CI (`brdf.spectrum_n_boot` resamples). |
+| `p_value` | float | Two-sided bootstrap p (γ ≠ 0). |
+| `n` | int | Scenes fit at this channel. |
+| `q_value` | float | Benjamini–Hochberg adjusted p (per product). |
+| `sig_raw` | bool | `p_value ≤ alpha` (uncorrected). |
+| `sig_bh` | bool | BH-significant at FDR `< alpha` (`drift.alpha`). |
+| `unstable` | bool | Degenerate fit (near-zero baseline; \|γ\| or CI half-width > `brdf.gamma_cap`) — hidden from plot scale. |
