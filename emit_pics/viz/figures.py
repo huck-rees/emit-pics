@@ -48,16 +48,18 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
             axes, ("rad", "rfl"),
             ("Radiance drift (%/yr)", "Reflectance drift (%/yr)")):
         d = df[df["product"] == prod].sort_values("wavelength")
-        st = style.PRODUCT_STYLE[prod]
         yerr = np.vstack([d["gamma_pct_yr"] - d["ci_lo_pct_yr"],
                           d["ci_hi_pct_yr"] - d["gamma_pct_yr"]])
         ax.errorbar(d["wavelength"], d["gamma_pct_yr"], yerr=yerr, fmt="none",
                     ecolor="0.7", elinewidth=0.6 * sc, capsize=1.2 * sc, zorder=1)
+        # Same significance styling in BOTH panels so the single legend matches:
+        # not-significant = open grey circle; significant = filled SIG_COLOR circle.
         ns, sg = d[~d[sig_col]], d[d[sig_col]]
-        ax.scatter(ns["wavelength"], ns["gamma_pct_yr"], s=9 * sc, marker=st["marker"],
-                   facecolors="none", edgecolors="0.5", linewidths=0.5 * sc, zorder=3)
-        ax.scatter(sg["wavelength"], sg["gamma_pct_yr"], s=11 * sc, marker=st["marker"],
-                   color=st["color"], zorder=4)
+        ax.scatter(ns["wavelength"], ns["gamma_pct_yr"], s=9 * sc, marker="o",
+                   facecolors="none", edgecolors=style.NS_EDGE, linewidths=0.5 * sc,
+                   zorder=3)
+        ax.scatter(sg["wavelength"], sg["gamma_pct_yr"], s=11 * sc, marker="o",
+                   color=style.SIG_COLOR, zorder=4)
         ax.axhline(0.0, color="k", lw=0.6 * sc, zorder=2)
         ax.set_ylabel(ylab)
         if ylim is not None:
@@ -65,13 +67,16 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
 
     axes[1].set_xlabel("Wavelength (nm)")
     handles = [
-        Line2D([0], [0], marker="o", color="0.5", ls="none", mfc="none",
+        Line2D([0], [0], marker="o", color=style.NS_EDGE, ls="none", mfc="none",
                label="not significant"),
-        Line2D([0], [0], marker="o", color="k", ls="none", label="BH-significant"),
+        Line2D([0], [0], marker="o", color=style.SIG_COLOR, ls="none",
+               label="BH-significant"),
         Line2D([0], [0], marker="|", color="0.7", ls="none",
                markersize=7 * sc, markeredgewidth=0.9 * sc, label="95% CI"),
     ]
-    axes[0].legend(handles=handles, loc="best")
+    # Semi-transparent box, top-left of the reflectance (bottom) panel.
+    axes[1].legend(handles=handles, loc="upper left", frameon=True,
+                   framealpha=0.8, edgecolor="0.7")
     if style.show_title():
         axes[0].set_title("EMIT pooled radiometric drift spectrum")
     return fig

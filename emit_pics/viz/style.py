@@ -49,6 +49,12 @@ PRODUCT_STYLE = {
     "rfl": {"color": "#009E73", "marker": "s", "ls": "--"},   # green, square, dashed
 }
 
+#: Single colour for significant points — used in BOTH panels and the legend so
+#: they always agree (Wong vermillion, colour-blind-safe). Not-significant points
+#: are open grey; significance is thus encoded by fill + colour, not colour alone.
+SIG_COLOR = "#D55E00"
+NS_EDGE = "0.5"
+
 _SITE_COLORS = ["#0072B2", "#E69F00", "#009E73", "#D55E00",
                 "#CC79A7", "#56B4E9", "#F0E442", "#000000"]
 _SITE_MARKERS = ["o", "s", "^", "D", "v", "P", "X", "*"]
