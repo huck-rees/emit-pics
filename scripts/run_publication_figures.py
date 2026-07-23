@@ -49,21 +49,39 @@ def _load_matched_pairs(cfg, *, patch="10_7_1"):
 
 
 def _load_channel_drift(cfg):
+    """Original cross-PICS pool: ONE representative patch per PICS.
+
+    Reads the per-patch delta tables (SZA-sized, as in the original analysis) —
+    NOT the ``use_aggregated`` / all-patches source, which collapses one PICS's
+    many patches and would show a single PICS. Reduces to one patch per PICS
+    (config roster + the configured site, auto for single-patch PICS), then
+    computes the Theil-Sen + BH stats on the fly from that same pool so the fit
+    line and stats box always match the points shown.
+    """
     from emit_pics.matched_pairs_drift_analysis import (
-        load_aggregated_delta_tables, load_delta_tables)
-    drift_csv = paths.drift(cfg.patch_size)
-    if not drift_csv.exists():
-        return None, (f"{drift_csv.name} not found — run "
-                      "scripts/run_matched_pairs_drift_analysis.py first.")
-    # Read the SAME delta source the drift stats were computed from, so the
-    # scatter and the fit/stats box agree with the published spectrum.
-    if cfg.use_aggregated:
-        deltas = load_aggregated_delta_tables(paths.DELTA_AGG_DIR, cfg.patch_size)
-    else:
-        deltas = load_delta_tables(paths.DELTA_PER_PATCH_DIR, cfg.patch_size)
-    if deltas.empty:
-        return None, "no delta tables found — run the delta / aggregate step first."
-    return {"deltas": deltas, "drift": pd.read_csv(drift_csv)}, drift_csv.name
+        load_delta_tables, compute_drift_spectrum, select_one_patch_per_pics)
+    try:
+        pooled = load_delta_tables(paths.DELTA_PER_PATCH_DIR, cfg.patch_size)
+    except ValueError as exc:
+        return None, f"per-patch delta tables have an outdated schema: {exc}"
+    if pooled.empty:
+        return None, ("no per-patch delta CSVs in data/delta_r/per_patch — run "
+                      "scripts/run_delta_calculations.py per PICS first.")
+
+    # Pin the configured site to its patch; roster (if any) resolves the rest.
+    roster = dict(cfg.drift_cross_pics_patches)
+    roster.setdefault(str(cfg.site), str(cfg.patch))
+    pooled, ambiguous = select_one_patch_per_pics(pooled, roster)
+    if ambiguous:
+        lines = "; ".join(f"{p} -> {ps}" for p, ps in ambiguous)
+        return None, ("could not reduce to one patch per PICS "
+                      f"({lines}); set drift.cross_pics_patches in run_config.yaml.")
+
+    drift = pd.concat([compute_drift_spectrum(pooled, "rad", alpha=cfg.alpha),
+                       compute_drift_spectrum(pooled, "rfl", alpha=cfg.alpha)],
+                      ignore_index=True)
+    return ({"deltas": pooled, "drift": drift},
+            f"per-patch pool: 1 patch/PICS across {pooled['PICS_ID'].nunique()} PICS")
 
 
 def _load_patch_coverage(cfg):

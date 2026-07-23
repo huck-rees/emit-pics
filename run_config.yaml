@@ -32,6 +32,14 @@ drift:
   alpha: 0.05            # Benjamini-Hochberg false-discovery-rate target
   use_aggregated: true   # fit the option-A aggregated tables (vs raw per-patch)
   individual_channels: true
+  # One representative patch per PICS for the ORIGINAL cross-PICS pool used by the
+  # publication per-channel figure. Only needed to disambiguate a PICS whose
+  # per_patch/ folder also holds the parallel all-patches experiment's tables
+  # (a PICS with a single patch is picked automatically). The configured `site`
+  # is pinned to `patch` above automatically.
+  # cross_pics_patches:
+  #   Libya_4: "10_7_1"
+  #   Algeria_3: "10_3_2"
 
 # --- BRDF / quasi-BRDF pooled multi-site drift ---
 # Pooled multi-site drift: every PICS contributes ONE representative patch (one

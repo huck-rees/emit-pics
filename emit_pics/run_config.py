@@ -43,6 +43,10 @@ class RunConfig:
     alpha: float = 0.05
     use_aggregated: bool = True
     individual_channels: bool = True
+    #: {PICS_ID: patch_id} — one representative patch per PICS for the original
+    #: cross-PICS pool (publication per-channel figure); disambiguates PICS whose
+    #: per_patch/ folder also holds the parallel all-patches experiment's tables.
+    drift_cross_pics_patches: dict = field(default_factory=dict)
     # --- BRDF / quasi-BRDF pooled multi-site drift ---
     # (shares the global drift.alpha and qc.require_review knobs)
     brdf_site_patches: dict = field(default_factory=dict)
@@ -122,6 +126,9 @@ def load_config(path=None) -> RunConfig:
         alpha=float(drift.get("alpha", 0.05)),
         use_aggregated=bool(drift.get("use_aggregated", True)),
         individual_channels=bool(drift.get("individual_channels", True)),
+        drift_cross_pics_patches={str(s): str(p) for s, p
+                                  in (drift.get("cross_pics_patches") or {}).items()
+                                  if p not in (None, "")},
         brdf_site_patches=brdf_site_patches,
         brdf_exclude_sites=brdf_exclude_sites,
         brdf_target_wl=float(brdf.get("target_wl", 858.0)),

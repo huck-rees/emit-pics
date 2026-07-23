@@ -234,6 +234,47 @@ def load_aggregated_delta_tables(agg_dir, patch_size, *, glob_pattern="*_delta.c
 # ============================================================
 # STATISTICS
 # ============================================================
+def select_one_patch_per_pics(df, roster=None):
+    """Reduce a pooled per-patch delta table to ONE representative patch per PICS.
+
+    The original cross-PICS drift analysis pools a single patch per PICS. When the
+    parallel all-patches experiment has also written extra per-patch tables for
+    some PICS (they share ``data/delta_r/per_patch/``), this picks the
+    representative one so replicate patches are never silently pooled:
+
+    * *roster* (``{PICS_ID: patch_id}``) wins where given;
+    * any PICS with exactly one patch is taken as-is;
+    * a PICS with several patches and no (valid) roster entry is left *out* and
+      reported back as ambiguous for the caller to fail on.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Pooled per-patch delta rows (needs ``PICS_ID`` and ``patch_id``).
+    roster : dict or None
+        ``{PICS_ID: patch_id}`` representative-patch map.
+
+    Returns
+    -------
+    tuple
+        ``(selected_df, ambiguous)`` — the one-patch-per-PICS subset and a list of
+        ``(PICS_ID, [patch_ids])`` that could not be resolved to a single patch.
+    """
+    roster = {str(k): str(v) for k, v in (roster or {}).items()}
+    keep, ambiguous = [], []
+    for pics, g in df.groupby("PICS_ID"):
+        patches = sorted(g["patch_id"].astype(str).unique())
+        if str(pics) in roster:
+            sel = g[g["patch_id"].astype(str) == roster[str(pics)]]
+            keep.append(sel) if not sel.empty else ambiguous.append((str(pics), patches))
+        elif len(patches) == 1:
+            keep.append(g)
+        else:
+            ambiguous.append((str(pics), patches))
+    selected = pd.concat(keep, ignore_index=True) if keep else df.iloc[0:0].copy()
+    return selected, ambiguous
+
+
 def benjamini_hochberg(pvals, alpha=DEFAULT_ALPHA):
     """Benjamini–Hochberg FDR control.
 
