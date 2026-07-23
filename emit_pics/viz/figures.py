@@ -1,23 +1,15 @@
-"""Publication figure builders — pure ``(DataFrame) -> Figure``.
+"""Publication figure builders — pure ``(data) -> Figure``.
 
-Each function reads a pipeline CSV (already on disk) and returns a styled
-Matplotlib figure. Builders are **theme-agnostic**: they pull fonts/weights from
-the active :mod:`emit_pics.viz.style` theme's rcParams, sizes from
-:func:`style.figsize`, and the few non-rc sizes (scatter ``s``, capsize) from
-:func:`style.scale` — so the same builder renders both the manuscript and the PPT
-variant. Titles are added only when the active theme asks (slides), never for the
-manuscript (its caption lives in LaTeX).
+Each function reads already-generated pipeline outputs and returns a Matplotlib
+figure. Builders run under an active :mod:`emit_pics.viz.style` theme (which sets
+the font family + output format); size-sensitive builders also read the theme's
+width presets and scale, while a dense reference figure may fix its own generous
+size so all its labels stay legible.
 """
 
-import warnings
-
 import numpy as np
-import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
-from matplotlib.cm import ScalarMappable
-from matplotlib.colors import Normalize
 from matplotlib.lines import Line2D
-from matplotlib.ticker import MaxNLocator
 
 from emit_pics.viz import style
 
@@ -28,8 +20,8 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
 
     Reads ``data/brdf/brdf_drift_spectrum.csv``. Numerically unstable channels are
     dropped; the bootstrap 95% CI is drawn as whiskers, and channels significant
-    by *sig_col* (default BH-FDR) are filled in the product colour while the rest
-    are open grey — redundant with the per-product marker shape for greyscale.
+    by *sig_col* (default BH-FDR) are filled in the significance colour while the
+    rest are open grey.
 
     Parameters
     ----------
@@ -88,160 +80,63 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
     return fig
 
 
-def _add_basemap(ax, crs, alpha):
-    """Faded Esri satellite basemap behind the map (needs contextily + network).
+def patch_coverage(patches, site, *, annotate="both", cmap="viridis_r",
+                   count_cols=(("n_gran_ovlp_rad", "L1B Radiance"),
+                               ("n_gran_ovlp_rfl", "L2A Reflectance")),
+                   panel_in=8.0, suptitle=None):
+    """One map per product: patches shaded by fully-covering granule count.
 
-    Degrades gracefully: a missing package or a failed tile fetch (offline) warns
-    and leaves the figure otherwise intact. On-figure attribution is suppressed —
-    credit Esri / World Imagery in the caption.
-    """
-    try:
-        import contextily as cx
-    except ImportError:
-        warnings.warn("contextily not installed; skipping satellite basemap "
-                      "(conda install -c conda-forge contextily).")
-        return
-    xlim, ylim = ax.get_xlim(), ax.get_ylim()   # basemap must not change extent
-    try:
-        cx.add_basemap(ax, crs=crs, source=cx.providers.Esri.WorldImagery,
-                       alpha=alpha, attribution="", zorder=-5)
-    except Exception as exc:                     # network / tile errors are non-fatal
-        warnings.warn(f"basemap fetch failed ({exc}); rendering without it.")
-    ax.set_xlim(*xlim)
-    ax.set_ylim(*ylim)
-
-
-def _add_scalebar(ax, length_m, label, sc):
-    """A framed km scale bar (data-unit length) in the lower-left corner."""
-    from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
-    from matplotlib.font_manager import FontProperties
-    bar = AnchoredSizeBar(ax.transData, length_m, label, loc="lower left",
-                          pad=0.3, borderpad=0.5, sep=3, frameon=True,
-                          color="black", size_vertical=0,
-                          fontproperties=FontProperties(size=7 * sc))
-    bar.patch.set(facecolor="white", edgecolor="0.6", alpha=0.75)
-    bar.set_in_layout(False)          # don't let it shrink the equal-aspect panel
-    ax.add_artist(bar)
-
-
-def _add_north(ax, sc):
-    """North arrow (grid north = up in the projected CRS) in the top-right corner."""
-    for lw, color, z in ((3.4 * sc, "white", 5), (1.3 * sc, "black", 6)):
-        ann = ax.annotate("", xy=(0.96, 0.97), xytext=(0.96, 0.87), zorder=z,
-                          xycoords="axes fraction",
-                          arrowprops=dict(arrowstyle="-|>", color=color, lw=lw))
-        ann.set_in_layout(False)
-    txt = ax.text(0.96, 0.985, "N", transform=ax.transAxes, ha="center", va="bottom",
-                  fontsize=8 * sc, fontweight="bold", zorder=6,
-                  path_effects=[pe.withStroke(linewidth=1.8 * sc, foreground="white")])
-    txt.set_in_layout(False)
-
-
-def _add_boundary_label(ax, site_proj, label, sc):
-    """Label the PICS boundary just inside its top edge."""
-    minx, miny, maxx, maxy = site_proj.total_bounds
-    txt = ax.text((minx + maxx) / 2, maxy - 0.02 * (maxy - miny), label,
-                  ha="center", va="top", zorder=6, fontsize=8 * sc, fontweight="bold",
-                  bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.6", alpha=0.8))
-    txt.set_in_layout(False)
-
-
-def patch_coverage(patches, site, *, size="double", aspect=0.62,
-                   count_cols=(("n_gran_ovlp_rad", "L1B radiance"),
-                               ("n_gran_ovlp_rfl", "L2A reflectance")),
-                   annotate="both", cmap="viridis_r",
-                   basemap=True, basemap_alpha=0.5, scalebar_km=20,
-                   north=True, boundary_label=None):
-    """Per-product maps of patches shaded by fully-covering granule count.
-
-    One panel per product (``count_cols``), each drawing the patch grid in its
-    native (projected) CRS shaded by the granule count, over a faded satellite
-    basemap, with the labelled PICS boundary, a km scale bar, a north arrow, and a
-    shared colour scale + colourbar. Reads the already-generated
-    ``patches_{site}_bnds.gpkg`` (geometry + ``n_gran_ovlp_*`` columns amended by
-    ``run_id_granules.py``) and the PICS boundary — no Earthdata re-search.
+    Faithful reproduction of the original coverage figure — a generously sized
+    grid (``panel_in`` inches per square panel) so every per-patch label stays
+    legible. Each panel shades the patches by that product's granule count
+    (``viridis_r``; darker = more), outlines the PICS boundary, carries its own
+    colourbar, and annotates every patch with its id and count. Reads the
+    already-generated ``patches_{site}_bnds.gpkg`` (geometry + ``n_gran_ovlp_*``
+    columns) and the PICS boundary — no Earthdata re-search.
 
     Parameters
     ----------
-    patches : geopandas.GeoDataFrame
-        Patches for one size, with ``patch_id``, ``geometry`` (projected CRS), and
-        the count columns named in *count_cols*.
-    site : geopandas.GeoDataFrame
-        Single-row PICS boundary (any CRS; reprojected to *patches*' CRS). Its
-        ``site_name`` labels the boundary unless *boundary_label* overrides it.
+    patches, site : geopandas.GeoDataFrame
+        Patch polygons (projected CRS, with ``patch_id`` + the count columns) and
+        the single-row PICS boundary (reprojected internally).
     annotate : str
-        Per-cell label: ``"both"`` (patch id + count), ``"count"`` (count only,
-        cleaner/larger), or ``"none"``.
+        Per-cell label: ``"both"`` (id + count), ``"count"`` (count only), or
+        ``"none"``.
     cmap : str
         Colormap; ``viridis_r`` so darker = more granules (colour-blind-safe).
-    basemap : bool
-        Draw a faded Esri satellite basemap (needs ``contextily`` + network;
-        skipped with a warning if unavailable).
-    basemap_alpha : float
-        Basemap opacity (lower = more faded).
-    scalebar_km : int or None
-        Scale-bar length in km (``None`` to omit).
-    north : bool
-        Draw a north arrow.
-    boundary_label : str or None
-        Text for the PICS boundary label (default: the site's ``site_name``).
+    panel_in : float
+        Side length (inches) of each square panel — keep generous so labels read.
+    suptitle : str or None
+        Figure title; defaults to "<site> — patches by granule count (darker = more)".
     """
-    cols = [c for c, _ in count_cols]
-    vals = np.concatenate([patches[c].fillna(0).to_numpy(dtype=float) for c in cols])
-    vmin, vmax = float(vals.min()), float(vals.max())
-    norm, cmap_obj = Normalize(vmin=vmin, vmax=vmax), plt.get_cmap(cmap)
-    sc = style.scale()
-    annot_fs = (7.0 if annotate == "both" else 9.0) * sc
-
     site_proj = site.to_crs(patches.crs)
-    if boundary_label is None:
-        boundary_label = (str(site.iloc[0]["site_name"])
-                          if "site_name" in site.columns else "PICS boundary")
-
-    fig, axes = plt.subplots(1, len(count_cols), figsize=style.figsize(size, aspect),
-                             layout="constrained")
+    n = len(count_cols)
+    fig, axes = plt.subplots(1, n, figsize=(panel_in * n, panel_in))
     axes = np.atleast_1d(axes)
 
     for ax, (col, title) in zip(axes, count_cols):
         gmap = patches.copy()
-        gmap["_n"] = gmap[col].fillna(0).astype(float)
-        gmap.plot(ax=ax, column="_n", cmap=cmap, vmin=vmin, vmax=vmax,
-                  edgecolor="white", linewidth=0.4 * sc, legend=False, zorder=1)
-        site_proj.boundary.plot(ax=ax, color="black", linewidth=0.8 * sc, zorder=3)
+        gmap["_n"] = gmap[col].fillna(0).astype(int)
 
-        if basemap:
-            _add_basemap(ax, patches.crs, basemap_alpha)
+        site_proj.boundary.plot(ax=ax, color="black", linewidth=1.6, zorder=3)
+        gmap.plot(ax=ax, column="_n", cmap=cmap, edgecolor="white", linewidth=0.5,
+                  legend=True, legend_kwds={"label": f"{title} granules", "shrink": 0.7})
 
         if annotate != "none":
             for _, prow in gmap.iterrows():
-                n = int(prow["_n"])
-                r, g, b, _ = cmap_obj(norm(prow["_n"]))
-                tc = "white" if (0.299 * r + 0.587 * g + 0.114 * b) < 0.5 else "black"
-                lbl = f"{prow['patch_id']}\n{n}" if annotate == "both" else str(n)
                 cpt = prow.geometry.centroid
+                lbl = (f"{prow['patch_id']}\n{prow['_n']}" if annotate == "both"
+                       else str(prow["_n"]))
                 ax.annotate(lbl, (cpt.x, cpt.y), ha="center", va="center",
-                            fontsize=annot_fs, color=tc, zorder=5,
-                            path_effects=[pe.withStroke(
-                                linewidth=0.6 * sc,
-                                foreground="black" if tc == "white" else "white")])
+                            fontsize=7, color="white", fontweight="bold", zorder=5)
 
-        _add_boundary_label(ax, site_proj, boundary_label, sc)
-        if scalebar_km:
-            _add_scalebar(ax, scalebar_km * 1000.0, f"{scalebar_km} km", sc)
-        if north:
-            _add_north(ax, sc)
-
-        ax.set_title(title)
+        ax.set_title(f"{title} — fully-covering scenes per patch", fontsize=11)
         ax.set_xticks([]); ax.set_yticks([])
         ax.set_aspect("equal")
-        for sp in ax.spines.values():
-            sp.set_visible(False)
 
-    sm = ScalarMappable(norm=norm, cmap=cmap_obj)
-    sm.set_array([])
-    cbar = fig.colorbar(sm, ax=list(axes), shrink=0.7,
-                        label="Fully-covering scenes per patch")
-    cbar.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    if style.show_title():
-        fig.suptitle("EMIT granule coverage per patch")
+    if suptitle is None:
+        nm = str(site.iloc[0]["site_name"]) if "site_name" in site.columns else "PICS"
+        suptitle = f"{nm} — patches by granule count (darker = more)"
+    fig.suptitle(suptitle, fontsize=13, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
