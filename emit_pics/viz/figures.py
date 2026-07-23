@@ -156,6 +156,119 @@ def matched_pairs_geometry(pairs, *, site="Libya 4", patch="10_7_1",
     return fig
 
 
+#: Median % change column + human label per product (matches the drift analysis).
+_DELTA_COL = {"rad": "delta_rad_pct_median", "rfl": "delta_rfl_pct_median"}
+_PRODUCT_LABEL = {"rad": "Radiance (L1B)", "rfl": "Reflectance (L2A)"}
+
+
+def _draw_channel_fit(ax, stats, x, sc):
+    """Overlay the Theil-Sen line + monospace stats box for one channel/product.
+
+    *stats* is a row from the drift spectrum CSV (same values as the published
+    drift spectrum, so line and spectrum always agree); *x* bounds the line.
+    """
+    from emit_pics.matched_pairs_drift_analysis import DAYS_PER_YEAR
+    x = np.asarray(x, dtype=float)
+    slope = stats.get("slope_pct_yr", np.nan) if stats is not None else np.nan
+    n = int(stats.get("n", 0) or 0) if stats is not None else 0
+    if stats is not None and x.size and np.isfinite(slope):
+        xr = np.array([np.nanmin(x), np.nanmax(x)])
+        yline = stats["intercept_pct"] + (slope / DAYS_PER_YEAR) * xr
+        ax.plot(xr, yline, color="k", lw=1.4 * sc, zorder=5)
+        txt = (f"drift = {slope:+.3f} %/yr\n"
+               f"95% CI [{stats['ci_low_pct_yr']:+.2f}, {stats['ci_high_pct_yr']:+.2f}]\n"
+               f"intercept = {stats['intercept_pct']:+.2f} %\n"
+               f"Kendall p = {stats['p_value']:.2g}   n = {n}")
+        if pd.notna(stats.get("bh_significant", np.nan)):
+            txt += "\n" + ("BH-significant" if bool(stats["bh_significant"])
+                           else "not BH-significant")
+    else:
+        txt = f"no drift fit (n = {n})"
+    ax.text(0.03, 0.97, txt, transform=ax.transAxes, va="top", ha="left",
+            family="monospace", fontsize=7 * sc,
+            bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.85), zorder=6)
+
+
+def _channel_site_legend(ax, styles, sub, sc):
+    """PICS colour/shape legend + a mean-|SZA| marker-size reference."""
+    from emit_pics.matched_pairs_drift_analysis import sza_marker_size
+    handles = [Line2D([], [], color=styles[p]["color"], marker=styles[p]["marker"],
+                      ls="", markeredgecolor="k", markersize=7 * sc, label=str(p))
+               for p in sorted(sub["PICS_ID"].unique())]
+    handles.append(Line2D([], [], ls="", label=" "))          # spacer
+    for sza in (20, 40, 60):
+        handles.append(Line2D([], [], color="0.5", marker="o", ls="",
+                              markeredgecolor="k",
+                              markersize=np.sqrt(sza_marker_size(sza) * sc),
+                              label=f"SZA {sza}°"))
+    ax.legend(handles=handles, loc="best", frameon=True, framealpha=0.9,
+              edgecolor="0.7")
+
+
+def channel_drift(deltas, drift, *, product="rad", target_nm=1030.0,
+                  size="onehalf", aspect=0.78, stat_label="median", ylim=None):
+    """Single-product per-channel drift scatter: DeltaR (%) vs Delta-t (days).
+
+    Reproduces the pipeline's per-channel scatter (``plot_channel_scatter``) as a
+    one-product publication figure. The nearest non-absorption EMIT channel to
+    *target_nm* is chosen; every pooled matched pair is a marker coloured/shaped
+    by PICS (Wong palette via :func:`style.site_styles`) and sized by the pair's
+    mean ``|SZA|``. A dashed zero line marks no-change; the black Theil-Sen line
+    and the monospace stats box use the **precomputed** drift-spectrum values, so
+    they match the published spectrum exactly.
+
+    Parameters
+    ----------
+    deltas : pandas.DataFrame
+        Pooled delta table (``load_(aggregated_)delta_tables``): needs
+        ``PICS_ID, dt_days, band_index, wavelength, sza_size``, the
+        ``delta_{rad,rfl}_pct_median`` columns and ``absorption_band_flag``.
+    drift : pandas.DataFrame
+        The drift spectrum CSV (``paths.drift``) — precomputed per-channel stats.
+    product : str
+        ``"rad"`` or ``"rfl"`` — one product per figure.
+    target_nm : float
+        Target wavelength (nm); the nearest non-absorption channel is drawn.
+    size, aspect, ylim :
+        Theme width class, height/width, and optional shared y-limits (%).
+    """
+    from emit_pics.matched_pairs_drift_analysis import (
+        absorption_band_indices, sza_marker_size)
+    sc = style.scale()
+    dcol = _DELTA_COL[product]
+
+    # Nearest non-absorption channel to the target wavelength.
+    abs_bands = set(absorption_band_indices(deltas))
+    wl_by_band = (deltas[~deltas["band_index"].isin(abs_bands)]
+                  .groupby("band_index")["wavelength"].median())
+    band = int((wl_by_band - target_nm).abs().idxmin())
+    wl = float(wl_by_band.loc[band])
+    sub = deltas[deltas["band_index"] == band]
+    styles = style.site_styles(sub["PICS_ID"].unique())
+
+    fig, ax = plt.subplots(figsize=style.figsize(size, aspect), layout="constrained")
+    ax.axhline(0.0, color="gray", lw=0.8 * sc, ls="--", zorder=1)
+    for pics, g in sub.groupby("PICS_ID"):
+        st = styles[pics]
+        ax.scatter(g["dt_days"], g[dcol], s=sza_marker_size(g["sza_size"]) * sc,
+                   c=st["color"], marker=st["marker"], edgecolors="k",
+                   linewidths=0.4 * sc, alpha=0.85, zorder=3)
+
+    row = drift[(drift["product"] == product) & (drift["band_index"] == band)]
+    _draw_channel_fit(ax, row.iloc[0].to_dict() if not row.empty else None,
+                      sub["dt_days"].to_numpy(), sc)
+
+    ax.set_xlabel("Δt — days between pair")
+    ax.set_ylabel(f"ΔR — % change ({stat_label})")
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+    _channel_site_legend(ax, styles, sub, sc)
+
+    if style.show_title():
+        ax.set_title(f"{_PRODUCT_LABEL[product]} — channel {band} ({wl:.1f} nm)")
+    return fig
+
+
 def patch_coverage(patches, site, *, annotate="both", cmap="viridis_r",
                    count_cols=(("n_gran_ovlp_rad", "L1B Radiance"),
                                ("n_gran_ovlp_rfl", "L2A Reflectance")),

@@ -48,6 +48,24 @@ def _load_matched_pairs(cfg, *, patch="10_7_1"):
              "sza_tol": cfg.sza_tol}, csv.name)
 
 
+def _load_channel_drift(cfg):
+    from emit_pics.matched_pairs_drift_analysis import (
+        load_aggregated_delta_tables, load_delta_tables)
+    drift_csv = paths.drift(cfg.patch_size)
+    if not drift_csv.exists():
+        return None, (f"{drift_csv.name} not found — run "
+                      "scripts/run_matched_pairs_drift_analysis.py first.")
+    # Read the SAME delta source the drift stats were computed from, so the
+    # scatter and the fit/stats box agree with the published spectrum.
+    if cfg.use_aggregated:
+        deltas = load_aggregated_delta_tables(paths.DELTA_AGG_DIR, cfg.patch_size)
+    else:
+        deltas = load_delta_tables(paths.DELTA_PER_PATCH_DIR, cfg.patch_size)
+    if deltas.empty:
+        return None, "no delta tables found — run the delta / aggregate step first."
+    return {"deltas": deltas, "drift": pd.read_csv(drift_csv)}, drift_csv.name
+
+
 def _load_patch_coverage(cfg):
     from emit_pics.id_granules import load_patches
     from emit_pics.config import pics_geodataframe
@@ -66,6 +84,10 @@ FIGURES = {
                       "build": figures.matched_pairs_geometry},
     "drift_spectrum": {"number": "fig03", "load": _load_drift_spectrum,
                        "build": figures.drift_spectrum},
+    "channel_drift_rad": {"number": "fig04a", "load": _load_channel_drift,
+                          "build": figures.channel_drift, "kwargs": {"product": "rad"}},
+    "channel_drift_rfl": {"number": "fig04b", "load": _load_channel_drift,
+                          "build": figures.channel_drift, "kwargs": {"product": "rfl"}},
 }
 
 
@@ -85,6 +107,9 @@ def main(argv=None) -> int:
                     help="write flat into this dir (e.g. the manuscript repo's figures/).")
     ap.add_argument("--patch", default="10_7_1",
                     help="patch id for per-patch figures (default: 10_7_1, Libya 4).")
+    ap.add_argument("--wavelength", type=float, default=1030.0,
+                    help="target wavelength (nm) for per-channel figures; the "
+                         "nearest non-absorption channel is drawn (default: 1030).")
     ap.add_argument("--annotate", choices=["both", "count", "none"], default=None,
                     help="per-cell label for map figures: 'both' (id+count), "
                          "'count' (cleaner), or 'none'. Applied only to figures "
@@ -109,10 +134,14 @@ def main(argv=None) -> int:
         if kwargs is None:
             print(f"[skip] {key}: {note}")
             continue
-        # Pass CLI overrides only to builders that accept them.
+        # Static per-figure build kwargs (e.g. which product), then CLI overrides
+        # applied only to builders whose signature accepts them.
+        kwargs.update(spec.get("kwargs", {}))
         params = inspect.signature(spec["build"]).parameters
         if args.annotate is not None and "annotate" in params:
             kwargs["annotate"] = args.annotate
+        if "target_nm" in params:
+            kwargs["target_nm"] = args.wavelength
         for th in themes:
             with style.theme(th):
                 fig = spec["build"](**kwargs)
