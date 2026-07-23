@@ -40,6 +40,14 @@ def _load_drift_spectrum(cfg):
     return {"df": pd.read_csv(csv)}, csv.name
 
 
+def _load_matched_pairs(cfg, *, patch="10_7_1"):
+    csv = paths.matched_pairs(cfg.site, patch)
+    if not csv.exists():
+        return None, f"{csv.name} not found — run scripts/run_id_matched_pairs.py first."
+    return ({"pairs": pd.read_csv(csv), "site": cfg.site, "patch": patch,
+             "sza_tol": cfg.sza_tol}, csv.name)
+
+
 def _load_patch_coverage(cfg):
     from emit_pics.id_granules import load_patches
     from emit_pics.config import pics_geodataframe
@@ -54,6 +62,8 @@ def _load_patch_coverage(cfg):
 FIGURES = {
     "patch_coverage": {"number": "fig01", "load": _load_patch_coverage,
                        "build": figures.patch_coverage},
+    "matched_pairs": {"number": "fig02", "load": _load_matched_pairs,
+                      "build": figures.matched_pairs_geometry},
     "drift_spectrum": {"number": "fig03", "load": _load_drift_spectrum,
                        "build": figures.drift_spectrum},
 }
@@ -73,6 +83,8 @@ def main(argv=None) -> int:
     ap.add_argument("--theme", choices=["manuscript", "ppt", "both"], default="both")
     ap.add_argument("--out", default=None,
                     help="write flat into this dir (e.g. the manuscript repo's figures/).")
+    ap.add_argument("--patch", default="10_7_1",
+                    help="patch id for per-patch figures (default: 10_7_1, Libya 4).")
     ap.add_argument("--annotate", choices=["both", "count", "none"], default=None,
                     help="per-cell label for map figures: 'both' (id+count), "
                          "'count' (cleaner), or 'none'. Applied only to figures "
@@ -90,7 +102,10 @@ def main(argv=None) -> int:
     n_written = 0
     for key in args.figures:
         spec = FIGURES[key]
-        kwargs, note = spec["load"](cfg)
+        # Pass --patch only to loaders that take it (per-patch figures).
+        load_params = inspect.signature(spec["load"]).parameters
+        load_kw = {"patch": args.patch} if "patch" in load_params else {}
+        kwargs, note = spec["load"](cfg, **load_kw)
         if kwargs is None:
             print(f"[skip] {key}: {note}")
             continue

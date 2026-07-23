@@ -8,7 +8,9 @@ size so all its labels stay legible.
 """
 
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from matplotlib.lines import Line2D
 
 from emit_pics.viz import style
@@ -77,6 +79,80 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
                    framealpha=0.8, edgecolor="0.7")
     if style.show_title():
         axes[0].set_title("EMIT pooled radiometric drift spectrum")
+    return fig
+
+
+def matched_pairs_geometry(pairs, *, site="Libya 4", patch="10_7_1",
+                           size="onehalf", aspect=0.62, sza_tol=None):
+    """Matched-pair geometry for one patch: acquisition date (x) vs in-patch SZA (y).
+
+    Reads the already-generated ``{site}_{patch}_matched_pairs.csv`` — one row per
+    *unordered* scene pair, so every scene appears in the ``t1_*``/``t2_*`` columns.
+    Each surviving scene is drawn once at ``(acquisition date, mean in-patch SZA)``;
+    a thin line links the two endpoints of every *matched* pair. Scenes that take
+    part in at least one match are filled in the accent colour, unmatched scenes are
+    open grey — so the reader sees both the geometry sampling and which acquisitions
+    have a same-geometry partner for the ΔR drift analysis.
+
+    Parameters
+    ----------
+    pairs : pandas.DataFrame
+        The matched-pairs table (``PAIR_CSV_COLS`` from ``id_matched_pairs``): needs
+        ``t1_scene_id/dt/SZA``, ``t2_scene_id/dt/SZA`` and the ``matched_pair`` flag.
+    site, patch : str
+        Labels for the (slide-only) title.
+    size : str
+        Width class resolved by the active theme (default ``onehalf``).
+    aspect : float
+        Height / width of the figure.
+    sza_tol : float or None
+        SZA matching tolerance (deg); shown in the slide title when given.
+    """
+    sc = style.scale()
+    accent = style.PRODUCT_STYLE["rad"]["color"]
+
+    # Recover the per-scene table from both halves of every pair row, then dedupe.
+    halves = [pairs[[f"{p}_scene_id", f"{p}_scene_dt", f"{p}_scene_SZA"]]
+              .set_axis(["scene_id", "dt", "sza"], axis=1) for p in ("t1", "t2")]
+    scenes = (pd.concat(halves, ignore_index=True)
+              .dropna(subset=["scene_id"])
+              .drop_duplicates(subset="scene_id"))
+    scenes["dt"] = pd.to_datetime(scenes["dt"])
+
+    matched = pairs[pairs["matched_pair"].astype(bool)].copy()
+    matched_ids = set(matched["t1_scene_id"]) | set(matched["t2_scene_id"])
+    scenes["in_pair"] = scenes["scene_id"].isin(matched_ids)
+
+    fig, ax = plt.subplots(figsize=style.figsize(size, aspect), layout="constrained")
+
+    # Matched-pair links first (behind the points).
+    for _, r in matched.iterrows():
+        ax.plot([pd.to_datetime(r["t1_scene_dt"]), pd.to_datetime(r["t2_scene_dt"])],
+                [r["t1_scene_SZA"], r["t2_scene_SZA"]],
+                color="0.6", lw=0.7 * sc, alpha=0.7, zorder=1)
+
+    iso, part = scenes[~scenes["in_pair"]], scenes[scenes["in_pair"]]
+    ax.scatter(iso["dt"], iso["sza"], s=14 * sc, marker="o", facecolors="none",
+               edgecolors=style.NS_EDGE, linewidths=0.6 * sc, zorder=3)
+    ax.scatter(part["dt"], part["sza"], s=16 * sc, marker="o", color=accent, zorder=4)
+
+    ax.set_ylabel("In-patch mean SZA (degrees)")
+    ax.set_xlabel("Acquisition date")
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=[1, 4, 7, 10]))
+
+    handles = [
+        Line2D([0], [0], marker="o", color=accent, ls="none", label="scene (matched)"),
+        Line2D([0], [0], marker="o", color=style.NS_EDGE, ls="none", mfc="none",
+               label="scene (unmatched)"),
+        Line2D([0], [0], color="0.6", lw=0.9 * sc, label="matched pair"),
+    ]
+    ax.legend(handles=handles, loc="best", frameon=True, framealpha=0.8, edgecolor="0.7")
+
+    if style.show_title():
+        tol = f" (|dSZA| <= {sza_tol:g} deg)" if sza_tol is not None else ""
+        ax.set_title(f"{site} {patch} - matched-pair geometry{tol}")
     return fig
 
 

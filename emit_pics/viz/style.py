@@ -119,7 +119,7 @@ _SHOW_TITLE = {"manuscript": False, "ppt": True}
 #: Output formats + raster dpi + background, per theme.
 _SAVE = {
     "manuscript": {"formats": ("pdf", "svg"), "dpi": 500, "transparent": False},
-    "ppt":        {"formats": ("svg", "png"), "dpi": 300, "transparent": False},
+    "ppt":        {"formats": ("svg", "png"), "dpi": 1000, "transparent": False},
 }
 
 _ACTIVE = None
