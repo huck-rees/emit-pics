@@ -17,7 +17,7 @@ from emit_pics.viz import style
 
 
 def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
-                   ylim=(-2.5, 2.5)):
+                   ylim=(-2.5, 2.5), title="EMIT pooled radiometric drift spectrum"):
     """BRDF pooled drift spectrum gamma(lambda): rad (top) / rfl (bottom) vs wavelength.
 
     Reads ``data/brdf/brdf_drift_spectrum.csv``. Numerically unstable channels are
@@ -38,6 +38,8 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
     ylim : tuple or None
         Shared y-axis limits (%/yr) for both panels; ``None`` autoscales. Points
         or CI whiskers outside the range are clipped to the fixed scale.
+    title : str
+        On-figure title (slide theme only; the manuscript caption is in LaTeX).
     """
     df = df[~df["unstable"]].copy()
     sc = style.scale()
@@ -78,7 +80,7 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
     axes[1].legend(handles=handles, loc="upper left", frameon=True,
                    framealpha=0.8, edgecolor="0.7")
     if style.show_title():
-        axes[0].set_title("EMIT pooled radiometric drift spectrum")
+        axes[0].set_title(title)
     return fig
 
 

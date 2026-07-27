@@ -40,6 +40,30 @@ def _load_drift_spectrum(cfg):
     return {"df": pd.read_csv(csv)}, csv.name
 
 
+def _load_mp_drift_spectrum(cfg):
+    """Matched-pairs cross-PICS drift spectrum, adapted to the BRDF builder schema.
+
+    Reads ``data/drift/{size}_drift.csv`` (written by
+    ``run_matched_pairs_drift_analysis.py``) and renames its columns into the names
+    ``figures.drift_spectrum`` expects, so the matched-pairs figure is rendered by
+    the same builder with the same specs (incl. the +/-2.5 %/yr y-limits). Water-
+    vapor absorption bands and unfit (NaN-slope) channels are marked ``unstable`` so
+    the builder drops them, exactly as it drops BRDF's numerically unstable channels.
+    """
+    csv = paths.drift(cfg.patch_size)
+    if not csv.exists():
+        return None, (f"{csv.name} not found — run "
+                      "scripts/run_matched_pairs_drift_analysis.py first.")
+    df = pd.read_csv(csv).rename(columns={
+        "slope_pct_yr": "gamma_pct_yr",
+        "ci_low_pct_yr": "ci_lo_pct_yr",
+        "ci_high_pct_yr": "ci_hi_pct_yr",
+        "bh_significant": "sig_bh",
+    })
+    df["unstable"] = df["absorption_band"].astype(bool) | df["gamma_pct_yr"].isna()
+    return {"df": df}, csv.name
+
+
 def _load_matched_pairs(cfg, *, patch="10_7_1"):
     csv = paths.matched_pairs(cfg.site, patch)
     if not csv.exists():
@@ -102,6 +126,9 @@ FIGURES = {
                       "build": figures.matched_pairs_geometry},
     "drift_spectrum": {"number": "fig03", "load": _load_drift_spectrum,
                        "build": figures.drift_spectrum},
+    "mp_drift_spectrum": {"number": "fig05", "load": _load_mp_drift_spectrum,
+                          "build": figures.drift_spectrum,
+                          "kwargs": {"title": "EMIT matched-pairs radiometric drift spectrum"}},
     "channel_drift_rad": {"number": "fig04a", "load": _load_channel_drift,
                           "build": figures.channel_drift, "kwargs": {"product": "rad"}},
     "channel_drift_rfl": {"number": "fig04b", "load": _load_channel_drift,
