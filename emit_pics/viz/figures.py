@@ -17,6 +17,7 @@ from emit_pics.viz import style
 
 
 def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
+                   sig_label="BH-significant",
                    ylim=(-2.5, 2.5), title="EMIT pooled radiometric drift spectrum"):
     """BRDF pooled drift spectrum gamma(lambda): rad (top) / rfl (bottom) vs wavelength.
 
@@ -35,6 +36,8 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
         Height / width of the whole figure.
     sig_col : str
         Significance column to colour by (``sig_bh`` or ``sig_raw``).
+    sig_label : str
+        Legend label for the filled significant points (match it to *sig_col*).
     ylim : tuple or None
         Shared y-axis limits (%/yr) for both panels; ``None`` autoscales. Points
         or CI whiskers outside the range are clipped to the fixed scale.
@@ -72,7 +75,7 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
         Line2D([0], [0], marker="o", color=style.NS_EDGE, ls="none", mfc="none",
                label="not significant"),
         Line2D([0], [0], marker="o", color=style.SIG_COLOR, ls="none",
-               label="BH-significant"),
+               label=sig_label),
         Line2D([0], [0], marker="|", color="0.7", ls="none",
                markersize=7 * sc, markeredgewidth=0.9 * sc, label="95% CI"),
     ]

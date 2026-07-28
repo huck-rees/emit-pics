@@ -59,6 +59,7 @@ def _load_mp_drift_spectrum(cfg):
         "ci_low_pct_yr": "ci_lo_pct_yr",
         "ci_high_pct_yr": "ci_hi_pct_yr",
         "bh_significant": "sig_bh",
+        "raw_significant": "sig_raw",
     })
     df["unstable"] = df["absorption_band"].astype(bool) | df["gamma_pct_yr"].isna()
     return {"df": df}, csv.name
@@ -125,10 +126,13 @@ FIGURES = {
     "matched_pairs": {"number": "fig02", "load": _load_matched_pairs,
                       "build": figures.matched_pairs_geometry},
     "drift_spectrum": {"number": "fig03", "load": _load_drift_spectrum,
-                       "build": figures.drift_spectrum},
+                       "build": figures.drift_spectrum,
+                       "kwargs": {"sig_col": "sig_raw", "sig_label": "significant (raw p < 0.05)"}},
     "mp_drift_spectrum": {"number": "fig05", "load": _load_mp_drift_spectrum,
                           "build": figures.drift_spectrum,
-                          "kwargs": {"title": "EMIT matched-pairs radiometric drift spectrum"}},
+                          "kwargs": {"sig_col": "sig_raw",
+                                     "sig_label": "significant (raw p < 0.05)",
+                                     "title": "EMIT matched-pairs radiometric drift spectrum"}},
     "channel_drift_rad": {"number": "fig04a", "load": _load_channel_drift,
                           "build": figures.channel_drift, "kwargs": {"product": "rad"}},
     "channel_drift_rfl": {"number": "fig04b", "load": _load_channel_drift,
