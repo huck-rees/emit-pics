@@ -132,6 +132,7 @@ FIGURES = {
                           "build": figures.drift_spectrum,
                           "kwargs": {"sig_col": "sig_raw",
                                      "sig_label": "significant (raw p < 0.05)",
+                                     "ylim": (-5.0, 5.0),
                                      "title": "EMIT matched-pairs radiometric drift spectrum"}},
     "channel_drift_rad": {"number": "fig04a", "load": _load_channel_drift,
                           "build": figures.channel_drift, "kwargs": {"product": "rad"}},
