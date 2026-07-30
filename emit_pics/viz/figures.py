@@ -16,15 +16,15 @@ from matplotlib.lines import Line2D
 from emit_pics.viz import style
 
 
-def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
-                   sig_label="BH-significant",
+def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_raw",
+                   sig_label="significant (raw p < 0.05)",
                    ylim=(-2.5, 2.5), title="EMIT pooled radiometric drift spectrum"):
     """BRDF pooled drift spectrum gamma(lambda): rad (top) / rfl (bottom) vs wavelength.
 
     Reads ``data/brdf/brdf_drift_spectrum.csv``. Numerically unstable channels are
     dropped; the bootstrap 95% CI is drawn as whiskers, and channels significant
-    by *sig_col* (default BH-FDR) are filled in the significance colour while the
-    rest are open grey.
+    by *sig_col* (the uncorrected per-channel p-value) are filled in the
+    significance colour while the rest are open grey.
 
     Parameters
     ----------
@@ -35,7 +35,8 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_bh",
     aspect : float
         Height / width of the whole figure.
     sig_col : str
-        Significance column to colour by (``sig_bh`` or ``sig_raw``).
+        Significance column to colour by (``sig_raw`` for the pooled BRDF table,
+        ``raw_significant`` for the matched-pairs table).
     sig_label : str
         Legend label for the filled significant points (match it to *sig_col*).
     ylim : tuple or None
@@ -184,9 +185,9 @@ def _draw_channel_fit(ax, stats, x, sc):
                f"95% CI [{stats['ci_low_pct_yr']:+.2f}, {stats['ci_high_pct_yr']:+.2f}]\n"
                f"intercept = {stats['intercept_pct']:+.2f} %\n"
                f"Kendall p = {stats['p_value']:.2g}   n = {n}")
-        if pd.notna(stats.get("bh_significant", np.nan)):
-            txt += "\n" + ("BH-significant" if bool(stats["bh_significant"])
-                           else "not BH-significant")
+        if pd.notna(stats.get("raw_significant", np.nan)):
+            txt += "\n" + ("significant (p < 0.05)" if bool(stats["raw_significant"])
+                           else "not significant")
     else:
         txt = f"no drift fit (n = {n})"
     ax.text(0.03, 0.97, txt, transform=ax.transAxes, va="top", ha="left",

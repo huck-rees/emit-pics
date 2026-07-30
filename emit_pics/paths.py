@@ -214,9 +214,9 @@ def brdf_bootstrap_fig(wl) -> Path:
     return BRDF_FIG_DIR / f"brdf_bootstrap_{wl:.0f}nm.png"
 
 
-def brdf_drift_spectrum_fig(kind) -> Path:
-    """Pooled drift spectrum figure; ``kind`` = ``'bh'`` | ``'raw'`` (§8)."""
-    return BRDF_FIG_DIR / f"brdf_drift_spectrum_{kind}.png"
+def brdf_drift_spectrum_fig() -> Path:
+    """Pooled drift spectrum figure (§8)."""
+    return BRDF_FIG_DIR / "brdf_drift_spectrum.png"
 
 
 def ensure_dirs():

@@ -5,7 +5,7 @@ Pure **local** post-processor (no Earthdata). Pools the delta CSVs of one patch
 size across all PICS and, per EMIT channel, fits the drift rate as the robust
 (Theil–Sen) slope of the pairwise percent change ΔR against the pair's time
 separation Δt, using the **median** in-patch statistic. Significance is Kendall's
-τ, false-discovery controlled across the 285 channels with Benjamini–Hochberg.
+τ, reporting the uncorrected per-channel p-value.
 
 By default (``USE_AGGREGATED = True``) it consumes the option-A **aggregated**
 tables (``data/delta_r/aggregated/{PICS}_{size}_delta.csv``, one row per
@@ -20,7 +20,7 @@ Outputs
 -------
 * ``data/drift/{size}_drift.csv`` — per-channel drift stats (RAD + RFL).
 * ``figures/matched_pairs/{size}_drift_spectrum.png`` — drift rate vs wavelength,
-  with 95% CI whiskers and BH-significance colouring, for both products.
+  with 95% CI whiskers and raw-significance colouring, for both products.
 * ``figures/matched_pairs/individual_channels/{size}_{wavelength}.png`` — one
   two-panel ΔR-vs-Δt scatter per channel (RAD left, RFL right; colour/shape =
   PICS, marker size ∝ mean |SZA|). Toggle with ``INDIVIDUAL_CHANNELS``.
@@ -107,9 +107,7 @@ def main() -> None:
     for name, spec in (("RAD", spec_rad), ("RFL", spec_rfl)):
         n_fit = int(spec["slope_pct_yr"].notna().sum())
         n_raw = int(spec["raw_significant"].fillna(False).sum())
-        n_bh = int(spec["bh_significant"].sum())
-        print(f"  {name}: {n_fit} channel(s) fit | {n_raw} raw p<{ALPHA} | "
-              f"{n_bh} BH-significant (FDR<{ALPHA})")
+        print(f"  {name}: {n_fit} channel(s) fit | {n_raw} significant (p<{ALPHA})")
         # Sensitivity check: how far the origin-forced (median-of-ratios) rate sits
         # from the free-intercept Theil-Sen rate. A small gap corroborates the
         # zero-intercept premise; a systematic gap flags residual bias.

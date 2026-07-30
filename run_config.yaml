@@ -29,7 +29,7 @@ spectra:
 
 # --- cross-PICS drift analysis ---
 drift:
-  alpha: 0.05            # Benjamini-Hochberg false-discovery-rate target
+  alpha: 0.05            # per-channel significance level (uncorrected p-value)
   use_aggregated: true   # fit the option-A aggregated tables (vs raw per-patch)
   individual_channels: true
   # One representative patch per PICS for the ORIGINAL cross-PICS pool used by the

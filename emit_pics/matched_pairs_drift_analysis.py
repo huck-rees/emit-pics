@@ -17,10 +17,10 @@ the surface is assumed stable, so if the sensor drifts linearly at rate ``m`` th
 
 So the **slope of ΔR-vs-Δt is the drift rate**. Each matched pair is one estimate
 of accumulated change over its interval. We fit the slope robustly with
-**Theil–Sen** (outlier-resistant), test significance with **Kendall's τ** (the
-rank test that matches Theil–Sen), and control the false-discovery rate across the
-285 channels with **Benjamini–Hochberg**. Theil–Sen's intercept is reported as a
-**bias diagnostic** (expected ≈ 0 for a valid matched-pairs design).
+**Theil–Sen** (outlier-resistant) and test significance with **Kendall's τ** (the
+rank test that matches Theil–Sen), reporting the uncorrected per-channel p-value.
+Theil–Sen's intercept is reported as a **bias diagnostic** (expected ≈ 0 for a
+valid matched-pairs design).
 
 As a **secondary sensitivity estimator** we also report an **origin-forced** drift
 rate: the robust median of the per-pair ratios ``ΔR_i / Δt_i`` (each pair is one
@@ -53,7 +53,7 @@ from scipy.stats import kendalltau, theilslopes
 # ============================================================
 DAYS_PER_YEAR = 365.25
 MIN_PAIRS = 3               #: fewest points needed to fit a channel
-DEFAULT_ALPHA = 0.05        #: BH false-discovery-rate target
+DEFAULT_ALPHA = 0.05        #: per-channel significance level (uncorrected Kendall-τ p)
 _Z95 = 1.959963985          #: normal quantile for the 95% distribution-free median CI
 
 #: Stable colour + marker per PICS site (underscored ids, as in the delta CSVs).
@@ -284,33 +284,6 @@ def select_one_patch_per_pics(df, roster=None):
     return selected, ambiguous
 
 
-def benjamini_hochberg(pvals, alpha=DEFAULT_ALPHA):
-    """Benjamini–Hochberg FDR control.
-
-    Returns ``(reject, qvalues)`` — a boolean array of BH-significant channels and
-    the adjusted p-values. NaN inputs (unfittable channels) pass through as
-    not-rejected / NaN and are excluded from the ranking.
-    """
-    p = np.asarray(pvals, dtype=float)
-    reject = np.zeros(p.shape, dtype=bool)
-    q = np.full(p.shape, np.nan)
-    idx = np.where(np.isfinite(p))[0]
-    if idx.size == 0:
-        return reject, q
-    ps = p[idx]
-    order = np.argsort(ps)
-    m = ps.size
-    ranked = ps[order]
-    qs = ranked * m / np.arange(1, m + 1)
-    qs = np.minimum.accumulate(qs[::-1])[::-1]     # enforce monotonicity
-    qs = np.clip(qs, 0.0, 1.0)
-    q_unsorted = np.empty(m)
-    q_unsorted[order] = qs
-    q[idx] = q_unsorted
-    reject[idx] = q_unsorted <= alpha
-    return reject, q
-
-
 def _nan_stats(n=0):
     """A drift-stat dict with NaN estimates (unfittable / excluded channel)."""
     return {"n": int(n), "slope_pct_yr": np.nan, "ci_low_pct_yr": np.nan,
@@ -385,8 +358,8 @@ def compute_drift_spectrum(df, product, *, alpha=DEFAULT_ALPHA):
 
     Returns a DataFrame (one row per ``band_index``, sorted) with the fit stats,
     a representative ``wavelength`` (median across pairs), an ``absorption_band``
-    flag (water-vapor bands, excluded -> NaN stats), ``raw_significant``
-    (p<=alpha), and BH results (``bh_qvalue``, ``bh_significant``).
+    flag (water-vapor bands, excluded -> NaN stats), and ``raw_significant``
+    (the uncorrected ``p_value <= alpha``).
     """
     dcol = _DELTA_COL[product]
     rows = []
@@ -401,10 +374,7 @@ def compute_drift_spectrum(df, product, *, alpha=DEFAULT_ALPHA):
                      "wavelength": float(np.nanmedian(g["wavelength"])),
                      "absorption_band": is_abs, **fit})
     spec = pd.DataFrame(rows).sort_values("band_index").reset_index(drop=True)
-    reject, q = benjamini_hochberg(spec["p_value"].to_numpy(), alpha)
     spec["raw_significant"] = spec["p_value"] <= alpha
-    spec["bh_qvalue"] = q
-    spec["bh_significant"] = reject
     spec.insert(0, "product", product)
     return spec
 
@@ -472,9 +442,9 @@ def _draw_fit(ax, stats, x):
             txt += (f"\norigin-forced = {o_slope:+.3f} %/yr\n"
                     f"  95% CI [{stats['origin_ci_low_pct_yr']:+.2f}, "
                     f"{stats['origin_ci_high_pct_yr']:+.2f}]")
-        if pd.notna(stats.get("bh_significant", np.nan)):
-            txt += "\n" + ("BH-significant" if bool(stats["bh_significant"])
-                           else "not BH-significant")
+        if pd.notna(stats.get("raw_significant", np.nan)):
+            txt += "\n" + ("significant (p < 0.05)" if bool(stats["raw_significant"])
+                           else "not significant")
     else:
         txt = f"no drift fit (n = {n})"
     ax.text(0.03, 0.97, txt, transform=ax.transAxes, va="top", ha="left",
@@ -492,7 +462,7 @@ def plot_channel_scatter(df, band_index, *, spectra=None, stat_label="median",
     replicated acquisition pair draws a larger dot). If ``"n_patches"`` is
     requested but the column is absent, it falls back to SZA. Each panel overlays
     its Theil–Sen regression line and a stats box (drift rate, 95% CI, intercept,
-    Kendall p, n, BH-significance). Stats come from *spectra*
+    Kendall p, n, significance). Stats come from *spectra*
     (``{"rad": spec_rad, "rfl": spec_rfl}``) when given — the same values as the
     drift spectrum — otherwise they are fit on the fly.
 
@@ -552,9 +522,9 @@ def _absorption_spans(spec):
 def plot_drift_spectrum(spec_rad, spec_rfl, *, patch_size, alpha=DEFAULT_ALPHA):
     """Two-panel drift spectrum: drift rate (%/yr) vs wavelength, RAD then RFL.
 
-    Per-channel 95% CI whiskers; BH-significant channels filled/red, the rest
-    hollow/grey. Water-vapor absorption windows (excluded from the analysis) are
-    shaded. Returns the figure.
+    Per-channel 95% CI whiskers; significant channels (raw p < alpha) filled/red,
+    the rest hollow/grey. Water-vapor absorption windows (excluded from the
+    analysis) are shaded. Returns the figure.
     """
     fig, axes = plt.subplots(2, 1, figsize=(12, 8.5), sharex=True)
     spans = _absorption_spans(spec_rad)
@@ -567,16 +537,16 @@ def plot_drift_spectrum(spec_rad, spec_rfl, *, patch_size, alpha=DEFAULT_ALPHA):
         y = s["slope_pct_yr"].to_numpy()
         lo = s["ci_low_pct_yr"].to_numpy()
         hi = s["ci_high_pct_yr"].to_numpy()
-        sig = s["bh_significant"].to_numpy(dtype=bool)
+        sig = s["raw_significant"].to_numpy(dtype=bool)
         # Whiskers = 95% CI on the slope; each marker = that channel's Theil–Sen
-        # drift rate (filled/red if BH-significant, hollow/grey otherwise).
+        # drift rate (filled/red if significant at raw p < alpha, hollow/grey otherwise).
         ax.errorbar(wl, y, yerr=[y - lo, hi - y], fmt="none", ecolor="darkgray",
                     elinewidth=0.8, capsize=2, zorder=1, label="95% CI")
         ax.scatter(wl[~sig], y[~sig], s=14, facecolors="none",
                    edgecolors="tab:gray", linewidths=0.6, zorder=2,
                    label="drift rate — not significant")
         ax.scatter(wl[sig], y[sig], s=20, c="tab:red", zorder=3,
-                   label=f"drift rate — BH-significant (FDR < {alpha})")
+                   label=f"drift rate — significant (p < {alpha})")
         ax.axhline(0.0, color="k", lw=0.8)
         ax.set_ylabel(f"{_PRODUCT_LABEL[product]}\ndrift (%/yr)")
         ax.set_xlabel("Wavelength (nm)")     # x-axis on BOTH panels

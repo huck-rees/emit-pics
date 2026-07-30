@@ -8,9 +8,8 @@ EMIT channel (water-vapor absorption bands excluded, for both products), and
 reports the shared-``gamma`` best estimate with its bootstrap 95% CI per
 wavelength. This is the multi-site analog of the matched-pairs drift spectrum.
 
-Significance across the ~244 fit channels is controlled by **Benjamini-Hochberg
-FDR** (per product, reusing the matched-pairs implementation); each channel's
-p-value is a two-sided **bootstrap** p (twice the smaller tail fraction of its
+Significance is the uncorrected per-channel p-value: each channel's p is a
+two-sided **bootstrap** p (twice the smaller tail fraction of its
 gamma draws about 0). Channels whose multiplicative baseline
 ``(alpha + beta cos theta)`` approaches zero (deep-SWIR / low-signal radiance)
 make ``gamma`` explode — a fit degeneracy, not drift; they are flagged
@@ -26,11 +25,9 @@ Lower ``brdf.spectrum_n_boot`` for a quick look, raise it for publication.
 
 Outputs
 -------
-* ``data/brdf/brdf_drift_spectrum.csv`` — per-channel shared gamma, CI, p/q, flags.
-* ``figures/brdf/brdf_drift_spectrum_bh.png`` — WITH Benjamini-Hochberg FDR (the
-  defensible version at this many channels).
-* ``figures/brdf/brdf_drift_spectrum_raw.png`` — WITHOUT correction (raw per-channel
-  p), for comparison only.
+* ``data/brdf/brdf_drift_spectrum.csv`` — per-channel shared gamma, CI, p, flags.
+* ``figures/brdf/brdf_drift_spectrum.png`` — drift spectrum with raw per-channel
+  significance colouring.
 
 Set the roster + knobs in run_config.yaml (``brdf:`` block), then run::
 
@@ -42,7 +39,6 @@ import sys
 import numpy as np
 
 from emit_pics import brdf_drift, paths, provenance
-from emit_pics.matched_pairs_drift_analysis import benjamini_hochberg
 from emit_pics.run_config import load_config
 
 # ============================================================
@@ -51,7 +47,7 @@ from emit_pics.run_config import load_config
 cfg = load_config()
 TARGET_WL       = cfg.brdf_target_wl
 SPECTRUM_N_BOOT = cfg.brdf_spectrum_n_boot   # per-channel resamples (heavier than §7)
-ALPHA           = cfg.alpha                  # BH-FDR + raw significance level
+ALPHA           = cfg.alpha                  # per-channel (raw) significance level
 GAMMA_CAP       = cfg.brdf_gamma_cap         # %/yr; degenerate-fit flag
 
 #: Script-local: manual y-limits (%/yr) per panel, or None to autoscale.
@@ -167,17 +163,12 @@ def main() -> None:
                 print(f"  {prod}: channel {j + 1}/{len(fit_bands)} ({wlgrid[b]:.0f} nm)")
     spectrum = pd.DataFrame(rows)
 
-    # 4. Significance two ways: raw p, and BH-FDR across channels (per product).
-    spectrum["q_value"] = np.nan
-    spectrum["sig_raw"] = spectrum["p_value"] <= ALPHA        # UNCORRECTED
-    spectrum["sig_bh"] = False                                # BH-FDR corrected
+    # 4. Significance: uncorrected per-channel bootstrap p-value.
+    spectrum["sig_raw"] = spectrum["p_value"] <= ALPHA
     for prod in PRODUCTS:
         m = (spectrum["product"] == prod).to_numpy()
-        reject, q = benjamini_hochberg(spectrum.loc[m, "p_value"].to_numpy(), ALPHA)
-        spectrum.loc[m, "q_value"] = q
-        spectrum.loc[m, "sig_bh"] = reject
-        print(f"{prod}: raw p<{ALPHA}: {int(spectrum.loc[m, 'sig_raw'].sum())}  |  "
-              f"BH FDR<{ALPHA}: {int(reject.sum())}   (of {int(m.sum())} channels)")
+        print(f"{prod}: significant p<{ALPHA}: "
+              f"{int(spectrum.loc[m, 'sig_raw'].sum())}   (of {int(m.sum())} channels)")
 
     # 5. Flag numerically unstable channels (near-zero baseline -> gamma explodes).
     _ci_hw = (spectrum["ci_hi_pct_yr"] - spectrum["ci_lo_pct_yr"]).abs() / 2
@@ -197,22 +188,16 @@ def main() -> None:
     provenance.write_sidecar(out_csv, cfg.as_dict())
     print(f"\nDrift spectrum CSV -> {out_csv}")
 
-    # 7. Figures: WITH BH-FDR (defensible) and WITHOUT (raw, for comparison).
+    # 7. Figure: per-channel drift spectrum with raw-significance colouring.
     paths.BRDF_FIG_DIR.mkdir(parents=True, exist_ok=True)
-    fig = _plot_drift_spectrum(spectrum, "sig_bh", f"BH-significant (FDR < {ALPHA})",
-                               "WITH Benjamini-Hochberg FDR correction",
-                               wlgrid=wlgrid, excl=excl, n_sites=len(sites))
-    fig.savefig(paths.brdf_drift_spectrum_fig("bh"), dpi=200, bbox_inches="tight")
-    plt.close(fig)
-
     fig = _plot_drift_spectrum(spectrum, "sig_raw",
-                               f"raw-significant (p < {ALPHA}, UNCORRECTED)",
-                               "WITHOUT correction (raw per-channel p-values)",
+                               f"significant (p < {ALPHA})",
+                               "pooled radiometric drift spectrum",
                                wlgrid=wlgrid, excl=excl, n_sites=len(sites))
-    fig.savefig(paths.brdf_drift_spectrum_fig("raw"), dpi=200, bbox_inches="tight")
+    fig.savefig(paths.brdf_drift_spectrum_fig(), dpi=200, bbox_inches="tight")
     plt.close(fig)
 
-    print(f"Drift spectrum figures -> {paths.BRDF_FIG_DIR}")
+    print(f"Drift spectrum figure -> {paths.BRDF_FIG_DIR}")
     print("Done.")
 
 

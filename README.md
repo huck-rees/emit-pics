@@ -64,7 +64,7 @@ Add `--dry-run` to any stage to print the exact steps it would run without execu
 | `matching` | `sza_tol`, `vza_tol` | Matched-pair tolerances (degrees) on \|ΔSZA\| and \|ΔVZA\|. |
 | `qc` | `require_review` | If true, downstream steps refuse to run until the QC worksheet is reviewed. |
 | `spectra` | `stat` | In-patch statistic to plot/compare (`median` or `mean`). |
-| `drift` | `alpha`, `use_aggregated`, `individual_channels` | BH false-discovery rate; fit aggregated vs raw per-patch deltas; render per-channel figures. |
+| `drift` | `alpha`, `use_aggregated`, `individual_channels` | Per-channel significance level (uncorrected p-value); fit aggregated vs raw per-patch deltas; render per-channel figures. |
 | `brdf` | `site_patches`, `exclude_sites`, `target_wl`, `min_scenes`, `n_bootstrap`, `per_site_boot`, `spectrum_n_boot`, `gamma_cap` | Pooled multi-site drift: the roster (one patch per PICS; `null` skips a site), excluded sites, single-channel wavelength, per-site scene floor, the three bootstrap counts, and the unstable-fit cap. Reuses `drift.alpha` + `qc.require_review`. |
 | `extract` | `cache_pixels`, `want_obs`, `filter_agg_flag`, `min_valid_frac` | Cache the raw pixel cube; stream OBS geometry; Aggregate-Flag screening + its threshold. |
 | `granule_search` | `date_start`, `date_end`, `patch_size_km` | Earthdata search window and patch size (step 2). |
@@ -109,7 +109,7 @@ You can always run the underlying scripts directly (e.g. `python scripts/run_del
 | `display_spectra` | Overlay every QC-surviving scene's RAD/RFL spectrum for a patch. |
 | `delta_calculations` | Per-wavelength **t1→t2** % change across matched pairs (band-order join; tidy long CSV). |
 | `PICS_allpatches_aggregate_pairs` | **Option A** — collapse each acquisition pair's spatial-replicate patches to one median ΔR per channel, removing pseudo-replication before the fit. |
-| `matched_pairs_drift_analysis` | Cross-PICS drift: per-channel Theil–Sen slope of ΔR vs Δt, Kendall-τ + BH-FDR significance, and figures. |
+| `matched_pairs_drift_analysis` | Cross-PICS drift: per-channel Theil–Sen slope of ΔR vs Δt, Kendall-τ (uncorrected) significance, and figures. |
 | `brdf_drift` | Pooled multi-site quasi-BRDF drift: per-site + joint `(α+β·cosθ)(1+γt)` fits, bootstraps, the shared-drift consistency check, and the design-table assembly. |
 
 The function libraries are side-effect-free; each is driven by a thin runner in `scripts/`.
@@ -136,7 +136,7 @@ Steps 1–2 are global to a PICS site; steps 3–6 are per-patch analyses branch
 
 7. **`run_PICS_allpatches_aggregate_pairs.py`** — Pure **local** per-PICS step that removes the **pseudo-replication** in the drift fit (*option A*). The step-6 tables carry one row per `(patch × acquisition-pair × channel)`, so the *same* acquisition pair seen by many spatial-replicate patches would otherwise enter the fit as many near-identical points, artificially narrowing the uncertainty. Per channel, this collapses each unique acquisition pair's spatial replicates to a single ΔR — the **median across patches** — so every pair contributes exactly one point → `data/delta_r/aggregated/{site}_{size}_delta.csv`, plus diagnostics `n_patches` and across-patch spread (`*_std`/`*_min`/`*_max`).
 
-8. **`run_matched_pairs_drift_analysis.py`** — Pure **local** cross-PICS analysis: pool the aggregated delta CSVs of one patch size across all PICS and, per EMIT channel, fit the **drift rate** as the robust **Theil–Sen** slope of ΔR vs Δt (%/yr), with a **Kendall-τ** p-value and **Benjamini–Hochberg** FDR control across the channels. Writes `data/drift/{size}_drift.csv`, `figures/matched_pairs/{size}_drift_spectrum.png` (drift vs wavelength, 95% CI whiskers, BH-significance colouring), and one two-panel ΔR-vs-Δt scatter per channel. `drift.use_aggregated=false` fits the raw per-patch deltas instead (pseudo-replicated). Water-vapor absorption bands are excluded from both products (shaded gaps).
+8. **`run_matched_pairs_drift_analysis.py`** — Pure **local** cross-PICS analysis: pool the aggregated delta CSVs of one patch size across all PICS and, per EMIT channel, fit the **drift rate** as the robust **Theil–Sen** slope of ΔR vs Δt (%/yr), with an uncorrected **Kendall-τ** p-value per channel and a secondary origin-forced (median-of-ratios) sensitivity estimate. Writes `data/drift/{size}_drift.csv`, `figures/matched_pairs/{size}_drift_spectrum.png` (drift vs wavelength, 95% CI whiskers, raw-significance colouring), and one two-panel ΔR-vs-Δt scatter per channel. `drift.use_aggregated=false` fits the raw per-patch deltas instead (pseudo-replicated). Water-vapor absorption bands are excluded from both products (shaded gaps).
 
 **Optional:** `run_export_pics_gpkg.py` regenerates `data/ROIs/northafrican_pics.gpkg` from `config/sites.yaml` for QGIS. It is a *derived* output (gitignored), never a pipeline input.
 
@@ -148,7 +148,7 @@ An **independent second drift estimate** that consumes the same extracted data (
 
 10. **`run_brdf_single_channel.py`** — At the single channel nearest `brdf.target_wl`: the **shared-drift consistency check** (each site's standalone γ + bootstrap CI; a `pass`/`marginal`/`fail` verdict on whether all CIs overlap — computed, **warned loudly if not clean, but never blocking**, and recorded in the sidecar); the joint pooled fit (per-site α/β + shared γ); the stratified within-site bootstrap of γ; and the quasi-BRDF-correction collapse figure. Writes `brdf_persite_gamma_{wl}nm.csv`, `brdf_joint_fit_{wl}nm.csv`, `brdf_bootstrap_gamma_{wl}nm.csv` + three figures.
 
-11. **`run_brdf_drift_spectrum.py`** — Repeat the pooled joint fit at **every** EMIT channel (water-vapor bands excluded), with a two-sided bootstrap p per channel and **Benjamini–Hochberg** FDR across channels (per product), plus an unstable-channel flag (`brdf.gamma_cap`). Writes `data/brdf/brdf_drift_spectrum.csv` (the multi-site analog of the matched-pairs drift spectrum) + BH-corrected and raw figures.
+11. **`run_brdf_drift_spectrum.py`** — Repeat the pooled joint fit at **every** EMIT channel (water-vapor bands excluded), with a two-sided (uncorrected) bootstrap p per channel, plus an unstable-channel flag (`brdf.gamma_cap`). Writes `data/brdf/brdf_drift_spectrum.csv` (the multi-site analog of the matched-pairs drift spectrum) + the drift-spectrum figure.
 
 > **Trust the pooled γ only if the consistency check is clean.** A `fail` (per-site CIs disjoint) means the pooled value blends differing true drifts — a red flag, not a result; a `marginal` warrants caution. Mauritania 2 is excluded by default (too few QC-surviving scenes to constrain γ); the `min_scenes` floor enforces this generally.
 
@@ -170,4 +170,4 @@ Both cube-extract runners can persist the raw, **unscreened** in-patch pixel cub
 pytest
 ```
 
-Unit tests cover the core science (band-order delta join, Theil–Sen / Kendall / BH drift statistics, matched-pair detection, the QC gate, and the BRDF fits — verified by recovering a known injected `(αₛ, βₛ, γ)` — plus the shared-drift consistency verdicts), the config/paths/pipeline plumbing, and a golden regression of the delta→drift chain against a known injected drift. Run them before and after any refactor to confirm the numbers are unchanged.
+Unit tests cover the core science (band-order delta join, Theil–Sen / Kendall drift statistics, matched-pair detection, the QC gate, and the BRDF fits — verified by recovering a known injected `(αₛ, βₛ, γ)` — plus the shared-drift consistency verdicts), the config/paths/pipeline plumbing, and a golden regression of the delta→drift chain against a known injected drift. Run them before and after any refactor to confirm the numbers are unchanged.

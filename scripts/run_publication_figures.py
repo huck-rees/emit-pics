@@ -58,7 +58,6 @@ def _load_mp_drift_spectrum(cfg):
         "slope_pct_yr": "gamma_pct_yr",
         "ci_low_pct_yr": "ci_lo_pct_yr",
         "ci_high_pct_yr": "ci_hi_pct_yr",
-        "bh_significant": "sig_bh",
         "raw_significant": "sig_raw",
     })
     df["unstable"] = df["absorption_band"].astype(bool) | df["gamma_pct_yr"].isna()
@@ -80,7 +79,7 @@ def _load_channel_drift(cfg):
     NOT the ``use_aggregated`` / all-patches source, which collapses one PICS's
     many patches and would show a single PICS. Reduces to one patch per PICS
     (config roster + the configured site, auto for single-patch PICS), then
-    computes the Theil-Sen + BH stats on the fly from that same pool so the fit
+    computes the Theil-Sen stats on the fly from that same pool so the fit
     line and stats box always match the points shown.
     """
     from emit_pics.matched_pairs_drift_analysis import (

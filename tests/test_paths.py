@@ -63,8 +63,7 @@ def test_brdf_figure_filenames():
     assert paths.brdf_persite_gamma_fig(858.0).name == "brdf_persite_gamma_858nm.png"
     assert paths.brdf_corrected_fig(858.0).name == "brdf_corrected_858nm.png"
     assert paths.brdf_bootstrap_fig(858.0).name == "brdf_bootstrap_858nm.png"
-    assert paths.brdf_drift_spectrum_fig("bh").name == "brdf_drift_spectrum_bh.png"
-    assert paths.brdf_drift_spectrum_fig("raw").name == "brdf_drift_spectrum_raw.png"
+    assert paths.brdf_drift_spectrum_fig().name == "brdf_drift_spectrum.png"
 
 
 def test_brdf_paths_land_in_expected_dirs():
@@ -72,7 +71,7 @@ def test_brdf_paths_land_in_expected_dirs():
     assert paths.brdf_drift_spectrum().parent == paths.BRDF_DIR
     assert paths.brdf_persite_gamma(858.0).parent == paths.BRDF_DIR
     assert paths.brdf_leverage_fig(858.0).parent == paths.BRDF_FIG_DIR
-    assert paths.brdf_drift_spectrum_fig("bh").parent == paths.BRDF_FIG_DIR
+    assert paths.brdf_drift_spectrum_fig().parent == paths.BRDF_FIG_DIR
 
 
 def test_site_spelling_is_normalised():

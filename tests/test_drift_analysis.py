@@ -1,10 +1,10 @@
-"""Unit tests for the drift statistics: Theil-Sen fit + BH FDR control."""
+"""Unit tests for the drift statistics: Theil-Sen fit + raw significance."""
 
 import numpy as np
 import pandas as pd
 
 from emit_pics.matched_pairs_drift_analysis import (
-    DAYS_PER_YEAR, benjamini_hochberg, compute_drift_spectrum,
+    DAYS_PER_YEAR, compute_drift_spectrum,
     fit_channel_drift, median_ratio_slope, select_one_patch_per_pics,
 )
 from tests._helpers import build_golden_delta_df
@@ -37,26 +37,6 @@ def test_select_reports_ambiguous_without_roster():
     sel, amb = select_one_patch_per_pics(df)
     assert sel.empty
     assert amb == [("Libya_4", ["10_0_0", "10_7_1"])]
-
-
-# ------------------------------------------------------------- benjamini_hochberg
-def test_bh_rejects_only_the_small_pvalue():
-    reject, q = benjamini_hochberg([0.001, 0.5, 0.5, 0.5], alpha=0.05)
-    assert reject.tolist() == [True, False, False, False]
-    np.testing.assert_allclose(q[0], 0.004, rtol=1e-6)   # 0.001 * 4 / 1
-
-
-def test_bh_nan_passes_through_and_is_excluded_from_ranking():
-    reject, q = benjamini_hochberg([0.001, np.nan, 0.5], alpha=0.05)
-    assert bool(reject[0]) is True
-    assert bool(reject[1]) is False
-    assert np.isnan(q[1])
-
-
-def test_bh_qvalues_are_monotonic():
-    _, q = benjamini_hochberg([0.01, 0.02, 0.03, 0.04], alpha=0.05)
-    # q-values are non-decreasing in p-value order
-    assert np.all(np.diff(q) >= -1e-12)
 
 
 # --------------------------------------------------------------- fit_channel_drift

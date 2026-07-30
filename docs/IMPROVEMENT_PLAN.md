@@ -22,7 +22,7 @@
 | Module | Function | Known-answer test |
 |---|---|---|
 | `delta_calculations` | `_pct_change`, `absorption_band_flag`, `compute_pair_delta` | % formula incl. near-zero denominator; **band-order join + ±3 nm wavelength-drift tolerance**; grid-mismatch → empty frame |
-| `matched_pairs_drift_analysis` | `benjamini_hochberg`, `fit_channel_drift`, `compute_drift_spectrum` | BH monotonicity + NaN passthrough; Theil–Sen slope on a line of known slope; <3-point guard |
+| `matched_pairs_drift_analysis` | `fit_channel_drift`, `median_ratio_slope`, `compute_drift_spectrum` | Theil–Sen slope on a line of known slope; <3-point guard; origin-forced (median-of-ratios) recovery + intercept-bias diagnostic |
 | `id_matched_pairs` | `find_matched_pairs`, `in_patch_mask`, `acq_timestamp` | 3 scenes with set SZA/VZA → known matched flags; point in/out of polygon |
 | `PICS_allpatches_aggregate_pairs` | `aggregate_by_pair`, `collapse_summary` | 2 patches, same acquisition pair → single median row, `n_patches=2` |
 | `qc_gate` | `apply_qc_filter`, `_keep` | `keep=FALSE` row dropped; unreviewed sheet raises `QCReviewRequired` |

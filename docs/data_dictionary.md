@@ -192,12 +192,10 @@ corroborates the zero-intercept premise; a systematic gap flags residual bias
 | `ci_low_pct_yr`, `ci_high_pct_yr` | %/year | 95% confidence interval on the slope. |
 | `intercept_pct` | percent | Theil–Sen intercept (bias diagnostic; ≈0 expected). |
 | `kendall_tau` | −1…+1 | Kendall rank correlation. |
-| `p_value` | float | Unadjusted Kendall-τ p-value. |
+| `p_value` | float | Kendall-τ p-value (uncorrected). |
 | `origin_slope_pct_yr` | %/year | Origin-forced drift rate: median of the per-pair ratios `ΔR/Δt` (secondary sensitivity estimator; NaN if unfitted). |
 | `origin_ci_low_pct_yr`, `origin_ci_high_pct_yr` | %/year | Distribution-free (order-statistic) 95% CI on the origin-forced rate. |
-| `raw_significant` | bool | `p_value ≤ alpha`. |
-| `bh_qvalue` | float | Benjamini–Hochberg adjusted p-value. |
-| `bh_significant` | bool | BH-significant at the FDR target (`drift.alpha`). |
+| `raw_significant` | bool | `p_value ≤ alpha` (`drift.alpha`; per-channel, uncorrected). |
 
 ---
 
@@ -297,7 +295,5 @@ drift spectrum (§8). Water-vapor bands are not fit (absent here, shaded in figu
 | `ci_lo_pct_yr`, `ci_hi_pct_yr` | %/year | Bootstrap 95% CI (`brdf.spectrum_n_boot` resamples). |
 | `p_value` | float | Two-sided bootstrap p (γ ≠ 0). |
 | `n` | int | Scenes fit at this channel. |
-| `q_value` | float | Benjamini–Hochberg adjusted p (per product). |
-| `sig_raw` | bool | `p_value ≤ alpha` (uncorrected). |
-| `sig_bh` | bool | BH-significant at FDR `< alpha` (`drift.alpha`). |
+| `sig_raw` | bool | `p_value ≤ alpha` (`drift.alpha`; per-channel, uncorrected). |
 | `unstable` | bool | Degenerate fit (near-zero baseline; \|γ\| or CI half-width > `brdf.gamma_cap`) — hidden from plot scale. |

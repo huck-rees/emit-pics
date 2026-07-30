@@ -55,7 +55,7 @@ IO/assembly shell.
 - `water_vapor_mask(ref_perchannel) -> (wlgrid, excl_mask, fit_bands)` — fixed-instrument band exclusion from one reflectance scene (§8).
 
 ### Reused as-is (not rebuilt)
-`benjamini_hochberg` (`matched_pairs_drift_analysis`), `load_scene_spectrum` +
+`load_scene_spectrum` +
 `_perchannel_path` (`delta_calculations`), `apply_qc_filter` / `is_reviewed`
 (`qc_gate`), `load_sites` / `canonical_token` (`config`), plus `paths`,
 `provenance`.
@@ -139,13 +139,13 @@ prerequisites.
 
 ### 3. `run_brdf_drift_spectrum.py` — γ(λ) spectrum (§8) — the expensive one
 - Reads `brdf_design.csv`; builds per-channel ρ matrices; water-vapor exclusion.
-- Pooled joint fit at every fit channel × 2 products; bootstrap p; BH-FDR (reuse
-  `benjamini_hochberg`); unstable-channel flag (`gamma_cap`).
+- Pooled joint fit at every fit channel × 2 products; uncorrected bootstrap p;
+  unstable-channel flag (`gamma_cap`).
 - **Outputs:** `brdf_drift_spectrum.csv` (product, band_index, wavelength,
-  gamma_pct_yr, ci_lo_pct_yr, ci_hi_pct_yr, p_value, q_value, sig_raw, sig_bh, n,
-  unstable) — columns mirror the matched-pairs drift spectrum; figures
-  `brdf_drift_spectrum_bh.png` and `brdf_drift_spectrum_raw.png` (rad top / rfl
-  bottom, water-vapor bands shaded, red = significant).
+  gamma_pct_yr, ci_lo_pct_yr, ci_hi_pct_yr, p_value, sig_raw, n,
+  unstable) — columns mirror the matched-pairs drift spectrum; figure
+  `brdf_drift_spectrum.png` (rad top / rfl bottom, water-vapor bands shaded,
+  red = significant).
 
 ---
 
