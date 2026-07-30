@@ -110,6 +110,13 @@ def main() -> None:
         n_bh = int(spec["bh_significant"].sum())
         print(f"  {name}: {n_fit} channel(s) fit | {n_raw} raw p<{ALPHA} | "
               f"{n_bh} BH-significant (FDR<{ALPHA})")
+        # Sensitivity check: how far the origin-forced (median-of-ratios) rate sits
+        # from the free-intercept Theil-Sen rate. A small gap corroborates the
+        # zero-intercept premise; a systematic gap flags residual bias.
+        gap = (spec["origin_slope_pct_yr"] - spec["slope_pct_yr"]).abs()
+        if gap.notna().any():
+            print(f"       origin-forced vs Theil-Sen |Δslope| (%/yr): "
+                  f"median {gap.median():.3f}, max {gap.max():.3f}")
 
     # 3. Drift-spectrum figure.
     FIG_DIR.mkdir(parents=True, exist_ok=True)

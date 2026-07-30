@@ -5,7 +5,7 @@
 # (libya_4 / "Libya 4" / Libya_4); it is resolved to the canonical filename token.
 
 # --- analysis target (required) ---
-site: Libya_4          # PICS site (any spelling)
+site: Libya_1          # PICS site (any spelling)
 patch: "10_7_1"        # patch_id for the single-patch steps
 patch_size: "10"       # patch-size token (km) for the batched (all-patches) steps
 

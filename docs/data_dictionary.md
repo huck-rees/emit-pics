@@ -174,7 +174,12 @@ per-patch-only columns (`patch_id`, `wavelength_t2`, and the raw per-scene
 
 ## 8. Drift stats — `{size}_drift.csv`
 
-One row per `(band × product)`; absorption-band rows carry NaN stats.
+One row per `(band × product)`; absorption-band rows carry NaN stats. The
+`slope_pct_yr` (free-intercept Theil–Sen) is the **primary** drift estimate; the
+`origin_*` columns are a **secondary sensitivity estimator** — a robust
+through-origin fit that forces `ΔR = 0` at `Δt = 0`. Agreement between the two
+corroborates the zero-intercept premise; a systematic gap flags residual bias
+(read alongside `intercept_pct`).
 
 | Column | Type/unit | Meaning |
 | --- | --- | --- |
@@ -183,11 +188,13 @@ One row per `(band × product)`; absorption-band rows carry NaN stats.
 | `wavelength` | nm | Channel wavelength (median across pairs). |
 | `absorption_band` | bool | Water-vapor band (excluded from the fit). |
 | `n` | int | Number of `(pair)` points fitted for the band. |
-| `slope_pct_yr` | %/year | Theil–Sen drift rate (NaN if unfitted). |
+| `slope_pct_yr` | %/year | Theil–Sen drift rate (primary estimate; NaN if unfitted). |
 | `ci_low_pct_yr`, `ci_high_pct_yr` | %/year | 95% confidence interval on the slope. |
 | `intercept_pct` | percent | Theil–Sen intercept (bias diagnostic; ≈0 expected). |
 | `kendall_tau` | −1…+1 | Kendall rank correlation. |
 | `p_value` | float | Unadjusted Kendall-τ p-value. |
+| `origin_slope_pct_yr` | %/year | Origin-forced drift rate: median of the per-pair ratios `ΔR/Δt` (secondary sensitivity estimator; NaN if unfitted). |
+| `origin_ci_low_pct_yr`, `origin_ci_high_pct_yr` | %/year | Distribution-free (order-statistic) 95% CI on the origin-forced rate. |
 | `raw_significant` | bool | `p_value ≤ alpha`. |
 | `bh_qvalue` | float | Benjamini–Hochberg adjusted p-value. |
 | `bh_significant` | bool | BH-significant at the FDR target (`drift.alpha`). |

@@ -22,6 +22,14 @@ rank test that matches Theil–Sen), and control the false-discovery rate across
 285 channels with **Benjamini–Hochberg**. Theil–Sen's intercept is reported as a
 **bias diagnostic** (expected ≈ 0 for a valid matched-pairs design).
 
+As a **secondary sensitivity estimator** we also report an **origin-forced** drift
+rate: the robust median of the per-pair ratios ``ΔR_i / Δt_i`` (each pair is one
+standalone drift estimate under the ``ΔR(Δt=0)=0`` anchor), with a distribution-
+free (order-statistic) 95% CI. It is the robust through-origin analog of the free
+fit; its **agreement** with the Theil–Sen slope corroborates the zero-intercept
+premise, while a systematic gap flags residual bias (see ``intercept_pct``). It is
+diagnostic only — the free-intercept Theil–Sen slope remains the primary estimate.
+
 Channels are keyed by ``band_index`` (0..284), not by float wavelength, so the
 same physical channel groups correctly across PICS and across EMIT's per-era
 wavelength drift. The **median** in-patch statistic is used (robust to residual
@@ -46,6 +54,7 @@ from scipy.stats import kendalltau, theilslopes
 DAYS_PER_YEAR = 365.25
 MIN_PAIRS = 3               #: fewest points needed to fit a channel
 DEFAULT_ALPHA = 0.05        #: BH false-discovery-rate target
+_Z95 = 1.959963985          #: normal quantile for the 95% distribution-free median CI
 
 #: Stable colour + marker per PICS site (underscored ids, as in the delta CSVs).
 PICS_STYLE = {
@@ -306,15 +315,50 @@ def _nan_stats(n=0):
     """A drift-stat dict with NaN estimates (unfittable / excluded channel)."""
     return {"n": int(n), "slope_pct_yr": np.nan, "ci_low_pct_yr": np.nan,
             "ci_high_pct_yr": np.nan, "intercept_pct": np.nan,
-            "kendall_tau": np.nan, "p_value": np.nan}
+            "kendall_tau": np.nan, "p_value": np.nan,
+            "origin_slope_pct_yr": np.nan, "origin_ci_low_pct_yr": np.nan,
+            "origin_ci_high_pct_yr": np.nan}
+
+
+def median_ratio_slope(dt_days, dR_pct):
+    """Origin-forced robust slope: median of the per-pair ratios ΔR/Δt (per day).
+
+    Each matched pair is a standalone drift estimate ``s_i = ΔR_i / Δt_i`` under the
+    ``ΔR(Δt=0)=0`` anchor; the median is the robust through-origin rate (the analog
+    of Theil–Sen that keeps its outlier resistance while forcing the intercept to
+    zero). The CI is the **distribution-free** 95% interval for that median, from
+    order statistics of the ratios via the normal approximation to the binomial
+    rank bounds — no normality assumption, and wild small-Δt ratios only ever
+    become extreme order statistics the median ignores. Pairs with non-finite or
+    non-positive Δt are dropped.
+
+    Returns ``(slope, ci_low, ci_high)`` in **percent per day**; all NaN if fewer
+    than ``MIN_PAIRS`` usable ratios.
+    """
+    x = np.asarray(dt_days, dtype=float)
+    y = np.asarray(dR_pct, dtype=float)
+    ok = np.isfinite(x) & np.isfinite(y) & (x > 0)
+    r = np.sort(y[ok] / x[ok])
+    n = r.size
+    if n < MIN_PAIRS:
+        return np.nan, np.nan, np.nan
+    med = float(np.median(r))
+    # Distribution-free CI for the median: 1-indexed lower rank l (clamped >= 1),
+    # symmetric upper rank n-l+1 -> 0-indexed r[l-1] and r[n-l].
+    l = int(np.floor(n / 2.0 - _Z95 * np.sqrt(n) / 2.0))
+    l = max(l, 1)
+    return med, float(r[l - 1]), float(r[n - l])
 
 
 def fit_channel_drift(dt_days, dR_pct):
     """Robust drift fit for one channel: ΔR (%) vs Δt (days).
 
     Returns a dict with ``n``, ``slope_pct_yr`` (drift rate) + 95% CI,
-    ``intercept_pct`` (bias diagnostic), ``kendall_tau`` and ``p_value``.
-    Too-few / all-NaN / degenerate-x cases return NaN stats (never raise).
+    ``intercept_pct`` (bias diagnostic), ``kendall_tau``, ``p_value``, and the
+    secondary origin-forced estimator ``origin_slope_pct_yr`` + its 95% CI
+    (``origin_ci_low_pct_yr`` / ``origin_ci_high_pct_yr``; see
+    :func:`median_ratio_slope`). Too-few / all-NaN / degenerate-x cases return NaN
+    stats (never raise).
     """
     x = np.asarray(dt_days, dtype=float)
     y = np.asarray(dR_pct, dtype=float)
@@ -325,10 +369,14 @@ def fit_channel_drift(dt_days, dR_pct):
         return out
     slope, intercept, lo, hi = theilslopes(y, x)      # per-day
     tau, p = kendalltau(x, y)
+    o_slope, o_lo, o_hi = median_ratio_slope(x, y)    # per-day, through origin
     out.update(slope_pct_yr=slope * DAYS_PER_YEAR,
                ci_low_pct_yr=lo * DAYS_PER_YEAR,
                ci_high_pct_yr=hi * DAYS_PER_YEAR,
-               intercept_pct=intercept, kendall_tau=tau, p_value=p)
+               intercept_pct=intercept, kendall_tau=tau, p_value=p,
+               origin_slope_pct_yr=o_slope * DAYS_PER_YEAR,
+               origin_ci_low_pct_yr=o_lo * DAYS_PER_YEAR,
+               origin_ci_high_pct_yr=o_hi * DAYS_PER_YEAR)
     return out
 
 
@@ -399,7 +447,9 @@ def _draw_fit(ax, stats, x):
     """Overlay the Theil–Sen regression line + a stats box on one panel.
 
     *stats* is a fit dict (from :func:`fit_channel_drift` or a spectrum row);
-    *x* is the channel's Δt values (to bound the line). Draws nothing but the
+    *x* is the channel's Δt values (to bound the line). The solid black line is the
+    free-intercept Theil–Sen fit; the dashed grey line is the secondary origin-
+    forced (median-of-ratios) fit, drawn from the origin. Draws nothing but the
     n-annotation when the channel is unfit (NaN slope).
     """
     n = int(stats.get("n", 0) or 0)
@@ -408,11 +458,20 @@ def _draw_fit(ax, stats, x):
     if x.size and np.isfinite(slope):
         xr = np.array([np.nanmin(x), np.nanmax(x)])
         yline = stats["intercept_pct"] + (slope / DAYS_PER_YEAR) * xr
-        ax.plot(xr, yline, color="k", lw=1.6, zorder=5)
+        ax.plot(xr, yline, color="k", lw=1.6, zorder=5, label="Theil–Sen")
         txt = (f"drift = {slope:+.3f} %/yr\n"
                f"95% CI [{stats['ci_low_pct_yr']:+.2f}, {stats['ci_high_pct_yr']:+.2f}]\n"
                f"intercept = {stats['intercept_pct']:+.2f} %\n"
                f"Kendall p = {stats['p_value']:.2g}   n = {n}")
+        # Secondary origin-forced fit: dashed grey line through (0, 0) + a box line.
+        o_slope = stats.get("origin_slope_pct_yr", np.nan)
+        if pd.notna(o_slope):
+            xr0 = np.array([0.0, np.nanmax(x)])
+            ax.plot(xr0, (o_slope / DAYS_PER_YEAR) * xr0, color="0.4", lw=1.2,
+                    ls="--", zorder=4, label="origin-forced")
+            txt += (f"\norigin-forced = {o_slope:+.3f} %/yr\n"
+                    f"  95% CI [{stats['origin_ci_low_pct_yr']:+.2f}, "
+                    f"{stats['origin_ci_high_pct_yr']:+.2f}]")
         if pd.notna(stats.get("bh_significant", np.nan)):
             txt += "\n" + ("BH-significant" if bool(stats["bh_significant"])
                            else "not BH-significant")
