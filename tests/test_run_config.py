@@ -31,7 +31,7 @@ def test_load_config_reads_values_and_fills_defaults(tmp_path):
     assert cfg.require_qc_review is True
     assert cfg.spectra_stat == "median"
     assert cfg.earth_sun_normalize is True     # radiometry block omitted -> default on
-    assert cfg.e0_method == "spencer"          # default E0 provider
+    assert cfg.e0_method == "table"            # default E0 provider (ephemeris table)
 
 
 def test_earth_sun_normalize_toggle_read(tmp_path):

@@ -43,9 +43,9 @@ class RunConfig:
     #: Divide L1B radiance by the Earth–Sun eccentricity factor E0 at read time
     #: (bring every scene to 1 AU, matching L2A). Applied in the per-scene loaders.
     earth_sun_normalize: bool = True
-    #: E0 provider: "spencer" (closed form, default) or "table" (ephemeris lookup
-    #: from config/earth_sun_distance.txt). The two agree to <0.1%.
-    e0_method: str = "spencer"
+    #: E0 provider: "table" (ephemeris lookup from config/earth_sun_distance.txt,
+    #: default) or "spencer" (closed-form Spencer 1971 / Iqbal 1983). Agree <0.1%.
+    e0_method: str = "table"
     # --- drift analysis ---
     alpha: float = 0.05
     use_aggregated: bool = True
@@ -131,7 +131,7 @@ def load_config(path=None) -> RunConfig:
         require_qc_review=bool(qc.get("require_review", True)),
         spectra_stat=str(spectra.get("stat", "median")),
         earth_sun_normalize=bool(radiometry.get("earth_sun_normalize", True)),
-        e0_method=str(radiometry.get("e0_method", "spencer")),
+        e0_method=str(radiometry.get("e0_method", "table")),
         alpha=float(drift.get("alpha", 0.05)),
         use_aggregated=bool(drift.get("use_aggregated", True)),
         individual_channels=bool(drift.get("individual_channels", True)),

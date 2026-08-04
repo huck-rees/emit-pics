@@ -19,14 +19,19 @@ by ``E0``.
 Two providers of ``E0`` are offered; both take a datetime (or array of them) and
 return ``E0``:
 
-* :func:`spencer_E0` — the closed-form Spencer (1971) truncated Fourier series
-  (the **default**). Reference coefficients as reproduced in Iqbal, *An
-  Introduction to Solar Radiation* (1983), Eq. 1.2.1 — the accessible citation
-  for the obscure primary note J. W. Spencer, *Search* 2(5): 172 (1971).
 * :func:`table_E0` — a per-day-of-year lookup from ``config/earth_sun_distance.txt``
-  (an ephemeris table of ``d`` in AU), returning ``E0 = 1/d²``. Use this to tie
-  ``E0`` to a tabulated ephemeris rather than the closed form; the two agree to
+  (an ephemeris table of ``d`` in AU), returning ``E0 = 1/d²``. This is the
+  **pipeline default** (``radiometry.e0_method: table``), so ``E0`` is tied to a
+  tabulated ephemeris a reviewer can point at.
+* :func:`spencer_E0` — the closed-form Spencer (1971) truncated Fourier series.
+  Reference coefficients as reproduced in Iqbal, *An Introduction to Solar
+  Radiation* (1983), Eq. 1.2.1 — the accessible citation for the obscure primary
+  note J. W. Spencer, *Search* 2(5): 172 (1971). The two providers agree to
   <0.1% (well below the drift signal), so results are unchanged either way.
+
+The bare-function ``method=`` default below stays ``"spencer"`` so the library is
+self-contained (no data-file read) when called directly; the pipeline passes
+``cfg.e0_method`` (``table`` by default), so production runs use the table.
 
 This module is the single source of the ``E0`` formula: both the pipeline loaders
 (:func:`emit_pics.delta_calculations.load_scene_spectrum`,
