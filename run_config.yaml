@@ -16,8 +16,8 @@ products:
 
 # --- matched-pair tolerances (degrees) ---
 matching:
-  sza_tol: 2.0
-  vza_tol: 5.0
+  sza_tol: 0.5
+  vza_tol: 999.0         # VZA no longer used for matching; left high to disable it
 
 # --- manual QC gate ---
 qc:
@@ -58,10 +58,10 @@ drift:
 brdf:
   site_patches:            # one representative patch per PICS; null = skip that site
     Libya_4: "10_7_1"
-    Algeria_3: null
-    Algeria_5: null
-    Libya_1: null
-    Mauritania_1: null
+    Libya_1: "10_5_6"
+    Algeria_3: "10_3_5"
+    Algeria_5: "10_6_7"
+    Mauritania_1: "10_4_3"
   exclude_sites: [Mauritania_2]   # dropped by design (too few QC-surviving scenes)
   target_wl: 858.0         # nm; nearest channel is used for the single-channel fit
   min_scenes: 4            # per-site post-QC floor; sites below are dropped
