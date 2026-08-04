@@ -145,7 +145,8 @@ def main() -> None:
 
     # 2. Scenes x bands matrices, and the pooled design arrays.
     mat = {p: brdf_drift.channel_matrix(obs, p, nband,
-                                        earth_sun_normalize=cfg.earth_sun_normalize)
+                                        earth_sun_normalize=cfg.earth_sun_normalize,
+                                        e0_method=cfg.e0_method)
            for p in PRODUCTS}
     g_all = obs["g"].to_numpy(float)
     t_all = obs["t"].to_numpy(float)

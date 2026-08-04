@@ -29,10 +29,13 @@ spectra:
 
 # --- radiometry ---
 radiometry:
-  # Divide L1B radiance by the Earth–Sun eccentricity factor E0 (Spencer 1971)
-  # at read time, bringing every scene to 1 AU (L2A reflectance already is).
-  # Removes the seasonal ~±3.4% 1/d² solar-flux leak from the radiance drift.
+  # Divide L1B radiance by the Earth–Sun eccentricity factor E0 at read time,
+  # bringing every scene to 1 AU (L2A reflectance already is). Removes the
+  # seasonal ~±3.4% 1/d² solar-flux leak from the radiance drift.
   earth_sun_normalize: true
+  # E0 provider: "spencer" (closed-form Spencer 1971 / Iqbal 1983) or "table"
+  # (ephemeris lookup from config/earth_sun_distance.txt). Agree to <0.1%.
+  e0_method: spencer
 
 # --- cross-PICS drift analysis ---
 drift:

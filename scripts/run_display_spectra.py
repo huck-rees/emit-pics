@@ -100,7 +100,8 @@ def main() -> None:
     #    a scene with no radiance CSV cannot be drawn — report it, don't fail.
     loaded, missing = load_patch_spectra(scenes, PICS_ID, PATCH_ID,
                                          paths.RFL_DIR, paths.RAD_DIR,
-                                         earth_sun_normalize=cfg.earth_sun_normalize)
+                                         earth_sun_normalize=cfg.earth_sun_normalize,
+                                         e0_method=cfg.e0_method)
     if missing:
         print(f"\n{len(missing)} scene(s) skipped — no radiance per-channel CSV "
               f"(re-run run_single_patch_cube_extract.py to include them):")

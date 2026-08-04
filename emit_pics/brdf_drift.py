@@ -291,13 +291,15 @@ def resolve_roster(cfg):
     return roster, excluded, unknown
 
 
-def scene_perchannel(site, patch, ts, product, *, earth_sun_normalize=True):
+def scene_perchannel(site, patch, ts, product, *, earth_sun_normalize=True,
+                     e0_method="spencer"):
     """One scene's per-channel stats CSV as a DataFrame, or None if absent.
 
     When *product* is ``"rad"`` and *earth_sun_normalize* is set (default), the
     radiance stat columns are divided by the scene's Earth–Sun eccentricity
-    factor ``E0`` (Spencer 1971) — the same 1-AU normalization applied in
-    :func:`load_scene_spectrum`. Reflectance is returned unchanged.
+    factor ``E0`` — the same 1-AU normalization applied in
+    :func:`load_scene_spectrum`; *e0_method* selects the ``E0`` provider
+    (``"spencer"`` | ``"table"``). Reflectance is returned unchanged.
     """
     d = paths.RAD_DIR if product == "rad" else paths.RFL_DIR
     path = _perchannel_path(d, site, patch, str(ts), product)
@@ -305,12 +307,13 @@ def scene_perchannel(site, patch, ts, product, *, earth_sun_normalize=True):
         return None
     df = pd.read_csv(path)
     if earth_sun_normalize and product == "rad":
-        df = normalize_radiance_spectrum(df, pd.to_datetime(str(ts), format=_TS_FMT))
+        df = normalize_radiance_spectrum(df, pd.to_datetime(str(ts), format=_TS_FMT),
+                                         method=e0_method)
     return df
 
 
 def load_site_obs(pics_id, patch, target_wl, *, require_qc_review,
-                  earth_sun_normalize=True):
+                  earth_sun_normalize=True, e0_method="spencer"):
     """Per-scene obs for one site: QC-surviving, ``has_rfl``, median rho at the band (§2).
 
     Mirrors the single-patch recipe: read the geometry table, apply the QC gate,
@@ -348,7 +351,8 @@ def load_site_obs(pics_id, patch, target_wl, *, require_qc_review,
 
     ref = load_scene_spectrum(geom.loc[0, "scene_id"], pics_id, patch,
                               paths.RFL_DIR, paths.RAD_DIR,
-                              earth_sun_normalize=earth_sun_normalize)
+                              earth_sun_normalize=earth_sun_normalize,
+                              e0_method=e0_method)
     if ref is None:
         return None, None, "first surviving scene has no radiance CSV"
     bidx = int((ref["central_wl"] - target_wl).abs().idxmin())
@@ -358,7 +362,8 @@ def load_site_obs(pics_id, patch, target_wl, *, require_qc_review,
     for _, s in geom.iterrows():
         spec = load_scene_spectrum(s["scene_id"], pics_id, patch,
                                    paths.RFL_DIR, paths.RAD_DIR,
-                                   earth_sun_normalize=earth_sun_normalize)
+                                   earth_sun_normalize=earth_sun_normalize,
+                                   e0_method=e0_method)
         if spec is None or len(spec) != len(ref):
             continue
         recs.append({"site": pics_id, "patch": patch,
@@ -387,7 +392,8 @@ def assemble_design(roster, cfg):
         df, wl_used, note = load_site_obs(
             pics_id, patch, cfg.brdf_target_wl,
             require_qc_review=cfg.require_qc_review,
-            earth_sun_normalize=cfg.earth_sun_normalize)
+            earth_sun_normalize=cfg.earth_sun_normalize,
+            e0_method=cfg.e0_method)
         kept = df is not None and not df.empty
         notes.append({"site": pics_id, "patch": patch, "wl_used": wl_used,
                       "note": note, "kept": kept})
@@ -459,18 +465,21 @@ def water_vapor_mask(ref_rfl):
     return wlgrid, excl, fit_bands
 
 
-def channel_matrix(obs, product, nband, *, earth_sun_normalize=True):
+def channel_matrix(obs, product, nband, *, earth_sun_normalize=True,
+                   e0_method="spencer"):
     """Scenes x bands median-rho matrix for *product*, band-order aligned (§8).
 
     Row ``i`` is ``obs`` scene ``i``'s per-channel median; a scene whose CSV is
     missing or has a different band count is left as NaN (and drops out per
     channel in :func:`channel_gamma`). Radiance rows are Earth–Sun (``E0``)
-    normalized when *earth_sun_normalize* is set (default); reflectance is not.
+    normalized when *earth_sun_normalize* is set (default), via *e0_method*;
+    reflectance is not.
     """
     M = np.full((len(obs), nband), np.nan)
     for i, (_, row) in enumerate(obs.iterrows()):
         s = scene_perchannel(row["site"], row["patch"], row["timestamp"], product,
-                             earth_sun_normalize=earth_sun_normalize)
+                             earth_sun_normalize=earth_sun_normalize,
+                             e0_method=e0_method)
         if s is not None and len(s) == nband:
             M[i] = s[f"median_{product}"].to_numpy(float)
     return M

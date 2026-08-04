@@ -17,9 +17,12 @@ Drift rate — %/year · Deltas — percent.
 **Radiometry — Earth–Sun normalization.** EMIT L1B radiance is **not**
 Earth–Sun-distance normalized (L2A reflectance already is). When
 `radiometry.earth_sun_normalize` is true (default) the pipeline divides each
-scene's radiance by its eccentricity factor `E0 = (d0/d)²` (Spencer 1971) — a
-per-scene 1-AU normalization — **at read time in the per-scene loaders**, not at
-extraction. Consequences: the stored per-channel stats (§3a `*_rad`) are the
+scene's radiance by its eccentricity factor `E0 = (d0/d)² = 1/d²` (`d` = Earth–Sun
+distance in AU; equivalently multiply by `d²`) — a per-scene 1-AU normalization —
+**at read time in the per-scene loaders**, not at extraction. `radiometry.e0_method`
+selects the `E0` provider: `spencer` (closed-form Spencer 1971 / Iqbal 1983,
+default) or `table` (ephemeris lookup from `config/earth_sun_distance.txt`); the
+two agree to <0.1%. Consequences: the stored per-channel stats (§3a `*_rad`) are the
 **raw** at-sensor radiance as extracted, whereas every product **derived through
 the loaders** — the deltas (§6/§7), matched-pairs drift (§8) and the BRDF
 `rho_rad`/`gamma` (§9/§14) — carries **E0-normalized** radiance. `E0` is not

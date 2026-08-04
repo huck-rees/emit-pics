@@ -95,7 +95,8 @@ def process_patch(pid: str) -> dict:
     specs = {}
     for sid in scene_ids:
         spec = load_scene_spectrum(sid, PICS_ID, pid, RFL_DIR, RAD_DIR,
-                                   earth_sun_normalize=cfg.earth_sun_normalize)
+                                   earth_sun_normalize=cfg.earth_sun_normalize,
+                                   e0_method=cfg.e0_method)
         specs[sid] = spec
         if spec is None:
             rep["missing_rad"][sid] = scene_perchannel_path(sid, PICS_ID, pid,

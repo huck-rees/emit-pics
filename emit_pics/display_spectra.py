@@ -71,12 +71,14 @@ PRODUCTS = {
 # ============================================================
 def load_patch_spectra(scenes: pd.DataFrame, pics_id: str, patch_id: str,
                        rfl_dir: Path, rad_dir: Path,
-                       *, earth_sun_normalize: bool = True
+                       *, earth_sun_normalize: bool = True,
+                       e0_method: str = "spencer"
                        ) -> tuple[list[dict], list[dict]]:
     """Load each surviving scene's per-channel spectrum, sorted by acquisition time.
 
     Radiance is Earth–Sun (``E0``) normalized when *earth_sun_normalize* is set
-    (default), matching the drift pipelines; reflectance is untouched.
+    (default), matching the drift pipelines (*e0_method* selects the provider);
+    reflectance is untouched.
 
     Parameters
     ----------
@@ -102,7 +104,8 @@ def load_patch_spectra(scenes: pd.DataFrame, pics_id: str, patch_id: str,
     for _, r in recs.iterrows():
         sid = r["scene_id"]
         spec = load_scene_spectrum(sid, pics_id, patch_id, rfl_dir, rad_dir,
-                                   earth_sun_normalize=earth_sun_normalize)
+                                   earth_sun_normalize=earth_sun_normalize,
+                                   e0_method=e0_method)
         dt = pd.to_datetime(r["datetime"])
         entry = {
             "scene_id": sid,

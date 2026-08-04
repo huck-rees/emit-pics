@@ -112,7 +112,8 @@ def scene_perchannel_path(scene_ur: str, pics_id: str, patch_id: str,
 
 def load_scene_spectrum(scene_ur: str, pics_id: str, patch_id: str,
                         rfl_dir: Path, rad_dir: Path,
-                        *, earth_sun_normalize: bool = True) -> pd.DataFrame | None:
+                        *, earth_sun_normalize: bool = True,
+                        e0_method: str = "spencer") -> pd.DataFrame | None:
     """Load one scene's median/mean spectrum for both products, keyed by wavelength.
 
     The scene is located by its acquisition timestamp (extracted from the RAD
@@ -135,6 +136,9 @@ def load_scene_spectrum(scene_ur: str, pics_id: str, patch_id: str,
         so the seasonal ``1/d²`` solar-flux term does not leak into the drift
         (L1B radiance is not distance-normalized; L2A reflectance already is).
         Exact — ``E0`` is a per-scene scalar. Default on.
+    e0_method : str, keyword-only
+        ``E0`` provider when normalizing: ``"spencer"`` (default) or ``"table"``
+        (see :mod:`emit_pics.earth_sun`).
 
     Returns
     -------
@@ -158,7 +162,8 @@ def load_scene_spectrum(scene_ur: str, pics_id: str, patch_id: str,
 
     spec = spec.sort_values("central_wl").reset_index(drop=True)
     if earth_sun_normalize:
-        spec = normalize_radiance_spectrum(spec, acq_datetime(scene_ur))
+        spec = normalize_radiance_spectrum(spec, acq_datetime(scene_ur),
+                                           method=e0_method)
     return spec
 
 

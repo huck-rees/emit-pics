@@ -10,8 +10,11 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+import pytest
+
 from emit_pics.earth_sun import (
-    normalize_radiance_spectrum, spencer_E0, RAD_STAT_COLS,
+    earth_sun_distance_au, normalize_radiance_spectrum, resolve_e0, spencer_E0,
+    table_E0, E0_METHODS, RAD_STAT_COLS,
 )
 from emit_pics.delta_calculations import compute_pair_delta
 from tests._helpers import make_meta, make_spec
@@ -45,6 +48,45 @@ def test_spencer_E0_scalar_vs_array_agree():
 def test_spencer_E0_parses_strings():
     np.testing.assert_allclose(spencer_E0("2023-01-03"),
                                spencer_E0(datetime(2023, 1, 3)))
+
+
+# ----------------------------------------------- table provider (ephemeris file)
+def test_distance_table_perihelion_aphelion_and_eccentricity():
+    doy = pd.date_range("2024-01-01", "2024-12-31", freq="D")   # leap year, 366 days
+    d = earth_sun_distance_au(doy)
+    # perihelion ~0.983 AU in early Jan, aphelion ~1.017 AU in early Jul.
+    assert 0.982 < d.min() < 0.984
+    assert 1.016 < d.max() < 1.018
+    ecc = (d.max() - d.min()) / (d.max() + d.min())
+    assert 0.016 < ecc < 0.017                                  # true e ~0.0167
+    assert d.argmin() < 15 and 175 < d.argmax() < 195           # Jan min, Jul max
+
+
+def test_table_E0_is_inverse_distance_squared():
+    dt = datetime(2023, 3, 15)
+    np.testing.assert_allclose(table_E0(dt), 1.0 / earth_sun_distance_au(dt) ** 2)
+
+
+def test_table_and_spencer_agree_within_0_1_percent():
+    # The two E0 providers must agree to <0.1% every day of the year (both are
+    # the same physics; Spencer is the closed-form approximation of the table).
+    doy = pd.date_range("2023-01-01", "2023-12-31", freq="D")
+    rel = np.abs(spencer_E0(doy) / table_E0(doy) - 1.0)
+    assert rel.max() < 1e-3
+
+
+def test_resolve_e0_dispatch_and_unknown_raises():
+    assert resolve_e0("spencer") is E0_METHODS["spencer"]
+    assert resolve_e0("table") is E0_METHODS["table"]
+    with pytest.raises(ValueError):
+        resolve_e0("nope")
+
+
+def test_normalize_with_table_method_divides_by_table_E0():
+    dt = datetime(2023, 7, 4)
+    spec = make_spec([500.0], [0.1], [0.1], [10.0], [10.0])
+    out = normalize_radiance_spectrum(spec, dt, method="table")
+    np.testing.assert_allclose(out["median_rad"], np.array([10.0]) / table_E0(dt))
 
 
 # ----------------------------------------------------- normalize_radiance_spectrum

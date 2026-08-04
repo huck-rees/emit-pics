@@ -105,7 +105,8 @@ def process_patch(pid: str) -> str:
     # Load each surviving scene's spectrum once (radiance anchors the join).
     loaded, missing = load_patch_spectra(scenes, PICS_ID, pid,
                                          paths.RFL_DIR, paths.RAD_DIR,
-                                         earth_sun_normalize=cfg.earth_sun_normalize)
+                                         earth_sun_normalize=cfg.earth_sun_normalize,
+                                         e0_method=cfg.e0_method)
     if missing:
         print(f"  {pid}: {len(missing)} scene(s) skipped — no radiance CSV.")
     if not loaded:

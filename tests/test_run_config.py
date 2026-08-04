@@ -31,16 +31,19 @@ def test_load_config_reads_values_and_fills_defaults(tmp_path):
     assert cfg.require_qc_review is True
     assert cfg.spectra_stat == "median"
     assert cfg.earth_sun_normalize is True     # radiometry block omitted -> default on
+    assert cfg.e0_method == "spencer"          # default E0 provider
 
 
 def test_earth_sun_normalize_toggle_read(tmp_path):
     p = tmp_path / "rc.yaml"
     p.write_text(
         "site: Libya_4\npatch: '10_7_1'\npatch_size: '10'\n"
-        "radiometry: {earth_sun_normalize: false}\n",
+        "radiometry: {earth_sun_normalize: false, e0_method: table}\n",
         encoding="utf-8",
     )
-    assert load_config(p).earth_sun_normalize is False
+    cfg = load_config(p)
+    assert cfg.earth_sun_normalize is False
+    assert cfg.e0_method == "table"
 
 
 def test_patch_size_coerced_to_string(tmp_path):

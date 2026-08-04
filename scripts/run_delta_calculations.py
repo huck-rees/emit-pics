@@ -73,7 +73,8 @@ def main() -> None:
     specs, missing_rad = {}, {}
     for sid in scene_ids:
         spec = load_scene_spectrum(sid, PICS_ID, PATCH_ID, RFL_DIR, RAD_DIR,
-                                   earth_sun_normalize=cfg.earth_sun_normalize)
+                                   earth_sun_normalize=cfg.earth_sun_normalize,
+                                   e0_method=cfg.e0_method)
         specs[sid] = spec
         if spec is None:
             missing_rad[sid] = scene_perchannel_path(sid, PICS_ID, PATCH_ID,
