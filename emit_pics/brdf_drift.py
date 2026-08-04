@@ -33,7 +33,11 @@ from scipy.optimize import least_squares
 from emit_pics import paths
 from emit_pics.config import load_sites
 from emit_pics.delta_calculations import _perchannel_path, load_scene_spectrum
+from emit_pics.earth_sun import normalize_radiance_spectrum
 from emit_pics.qc_gate import QCReviewRequired, apply_qc_filter
+
+#: Compact acquisition-timestamp format carried in the design table (``ts``).
+_TS_FMT = "%Y%m%dT%H%M%S"
 
 #: Seconds per Julian year — the common-clock scale for ``t`` (years).
 _YR_SEC = 365.25 * 86400
@@ -287,19 +291,33 @@ def resolve_roster(cfg):
     return roster, excluded, unknown
 
 
-def scene_perchannel(site, patch, ts, product):
-    """One scene's per-channel stats CSV as a DataFrame, or None if absent."""
+def scene_perchannel(site, patch, ts, product, *, earth_sun_normalize=True):
+    """One scene's per-channel stats CSV as a DataFrame, or None if absent.
+
+    When *product* is ``"rad"`` and *earth_sun_normalize* is set (default), the
+    radiance stat columns are divided by the scene's Earth–Sun eccentricity
+    factor ``E0`` (Spencer 1971) — the same 1-AU normalization applied in
+    :func:`load_scene_spectrum`. Reflectance is returned unchanged.
+    """
     d = paths.RAD_DIR if product == "rad" else paths.RFL_DIR
     path = _perchannel_path(d, site, patch, str(ts), product)
-    return pd.read_csv(path) if path.exists() else None
+    if not path.exists():
+        return None
+    df = pd.read_csv(path)
+    if earth_sun_normalize and product == "rad":
+        df = normalize_radiance_spectrum(df, pd.to_datetime(str(ts), format=_TS_FMT))
+    return df
 
 
-def load_site_obs(pics_id, patch, target_wl, *, require_qc_review):
+def load_site_obs(pics_id, patch, target_wl, *, require_qc_review,
+                  earth_sun_normalize=True):
     """Per-scene obs for one site: QC-surviving, ``has_rfl``, median rho at the band (§2).
 
     Mirrors the single-patch recipe: read the geometry table, apply the QC gate,
     keep only reflectance-bearing survivors, then take each scene's median rho at
     the channel nearest *target_wl* (band-order aligned to the first survivor).
+    ``rho_rad`` is Earth–Sun (``E0``) normalized when *earth_sun_normalize* is set
+    (default), via :func:`load_scene_spectrum`; ``rho_rfl`` is untouched.
 
     Returns
     -------
@@ -329,7 +347,8 @@ def load_site_obs(pics_id, patch, target_wl, *, require_qc_review):
         return None, None, "no QC-surviving scenes with reflectance"
 
     ref = load_scene_spectrum(geom.loc[0, "scene_id"], pics_id, patch,
-                              paths.RFL_DIR, paths.RAD_DIR)
+                              paths.RFL_DIR, paths.RAD_DIR,
+                              earth_sun_normalize=earth_sun_normalize)
     if ref is None:
         return None, None, "first surviving scene has no radiance CSV"
     bidx = int((ref["central_wl"] - target_wl).abs().idxmin())
@@ -338,7 +357,8 @@ def load_site_obs(pics_id, patch, target_wl, *, require_qc_review):
     recs = []
     for _, s in geom.iterrows():
         spec = load_scene_spectrum(s["scene_id"], pics_id, patch,
-                                   paths.RFL_DIR, paths.RAD_DIR)
+                                   paths.RFL_DIR, paths.RAD_DIR,
+                                   earth_sun_normalize=earth_sun_normalize)
         if spec is None or len(spec) != len(ref):
             continue
         recs.append({"site": pics_id, "patch": patch,
@@ -364,8 +384,10 @@ def assemble_design(roster, cfg):
     """
     frames, wl_by_site, notes = [], {}, []
     for pics_id, patch in roster.items():
-        df, wl_used, note = load_site_obs(pics_id, patch, cfg.brdf_target_wl,
-                                          require_qc_review=cfg.require_qc_review)
+        df, wl_used, note = load_site_obs(
+            pics_id, patch, cfg.brdf_target_wl,
+            require_qc_review=cfg.require_qc_review,
+            earth_sun_normalize=cfg.earth_sun_normalize)
         kept = df is not None and not df.empty
         notes.append({"site": pics_id, "patch": patch, "wl_used": wl_used,
                       "note": note, "kept": kept})
@@ -437,16 +459,18 @@ def water_vapor_mask(ref_rfl):
     return wlgrid, excl, fit_bands
 
 
-def channel_matrix(obs, product, nband):
+def channel_matrix(obs, product, nband, *, earth_sun_normalize=True):
     """Scenes x bands median-rho matrix for *product*, band-order aligned (§8).
 
     Row ``i`` is ``obs`` scene ``i``'s per-channel median; a scene whose CSV is
     missing or has a different band count is left as NaN (and drops out per
-    channel in :func:`channel_gamma`).
+    channel in :func:`channel_gamma`). Radiance rows are Earth–Sun (``E0``)
+    normalized when *earth_sun_normalize* is set (default); reflectance is not.
     """
     M = np.full((len(obs), nband), np.nan)
     for i, (_, row) in enumerate(obs.iterrows()):
-        s = scene_perchannel(row["site"], row["patch"], row["timestamp"], product)
+        s = scene_perchannel(row["site"], row["patch"], row["timestamp"], product,
+                             earth_sun_normalize=earth_sun_normalize)
         if s is not None and len(s) == nband:
             M[i] = s[f"median_{product}"].to_numpy(float)
     return M

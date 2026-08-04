@@ -25,7 +25,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from emit_pics.id_matched_pairs import acq_timestamp
+from emit_pics.earth_sun import normalize_radiance_spectrum
+from emit_pics.id_matched_pairs import acq_datetime, acq_timestamp
 
 # ============================================================
 # CONSTANTS
@@ -110,7 +111,8 @@ def scene_perchannel_path(scene_ur: str, pics_id: str, patch_id: str,
 
 
 def load_scene_spectrum(scene_ur: str, pics_id: str, patch_id: str,
-                        rfl_dir: Path, rad_dir: Path) -> pd.DataFrame | None:
+                        rfl_dir: Path, rad_dir: Path,
+                        *, earth_sun_normalize: bool = True) -> pd.DataFrame | None:
     """Load one scene's median/mean spectrum for both products, keyed by wavelength.
 
     The scene is located by its acquisition timestamp (extracted from the RAD
@@ -127,6 +129,12 @@ def load_scene_spectrum(scene_ur: str, pics_id: str, patch_id: str,
         Identify the per-channel CSV filenames.
     rfl_dir, rad_dir : Path
         Directories holding the reflectance / radiance per-channel CSVs.
+    earth_sun_normalize : bool, keyword-only
+        Divide the radiance columns by the scene's Earth–Sun eccentricity factor
+        ``E0`` (Spencer 1971), bringing every scene to a common 1-AU illumination
+        so the seasonal ``1/d²`` solar-flux term does not leak into the drift
+        (L1B radiance is not distance-normalized; L2A reflectance already is).
+        Exact — ``E0`` is a per-scene scalar. Default on.
 
     Returns
     -------
@@ -148,7 +156,10 @@ def load_scene_spectrum(scene_ur: str, pics_id: str, patch_id: str,
     else:
         spec = rad.assign(median_rfl=np.nan, mean_rfl=np.nan)
 
-    return spec.sort_values("central_wl").reset_index(drop=True)
+    spec = spec.sort_values("central_wl").reset_index(drop=True)
+    if earth_sun_normalize:
+        spec = normalize_radiance_spectrum(spec, acq_datetime(scene_ur))
+    return spec
 
 
 # ============================================================

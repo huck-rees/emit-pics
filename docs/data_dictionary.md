@@ -14,6 +14,19 @@ wavelength rounded to a whole nm (e.g. `858`).
 unitless (EMIT L2A) · Angles (SZA/VZA) — degrees · Time separation — days ·
 Drift rate — %/year · Deltas — percent.
 
+**Radiometry — Earth–Sun normalization.** EMIT L1B radiance is **not**
+Earth–Sun-distance normalized (L2A reflectance already is). When
+`radiometry.earth_sun_normalize` is true (default) the pipeline divides each
+scene's radiance by its eccentricity factor `E0 = (d0/d)²` (Spencer 1971) — a
+per-scene 1-AU normalization — **at read time in the per-scene loaders**, not at
+extraction. Consequences: the stored per-channel stats (§3a `*_rad`) are the
+**raw** at-sensor radiance as extracted, whereas every product **derived through
+the loaders** — the deltas (§6/§7), matched-pairs drift (§8) and the BRDF
+`rho_rad`/`gamma` (§9/§14) — carries **E0-normalized** radiance. `E0` is not
+stored; it is `emit_pics.earth_sun.spencer_E0(datetime)` of the scene. The
+per-scene sidecar records the `earth_sun_normalize` flag actually used.
+Reflectance products are unaffected throughout.
+
 ---
 
 ## Directory map
@@ -74,7 +87,7 @@ One row per EMIT channel. Statistic keys: `min, 1qt, median, 3qt, max, mean, std
 | Column | Type/unit | Meaning |
 | --- | --- | --- |
 | `central_wl` | nm | Channel centre wavelength. |
-| `min_rad … std_rad` | µW/cm²/sr/nm | Radiance in-patch stats (rad file). |
+| `min_rad … std_rad` | µW/cm²/sr/nm | Radiance in-patch stats (rad file). **Raw** at-sensor radiance — Earth–Sun normalization is applied downstream at read time (see *Radiometry* above), not here. |
 | `min_rfl … std_rfl` | unitless | Reflectance in-patch stats (rfl file). |
 
 ## 3b. Per-scene geometry table — `geometry_{site}_{patch}.csv`
@@ -150,8 +163,8 @@ One row per `(matched pair × band)`.
 | `wavelength`, `wavelength_t2` | nm | t1's canonical grid; t2's label for the same band. |
 | `rfl_t1_median … rfl_t2_mean` | unitless | Per-scene reflectance median/mean. |
 | `delta_rfl_pct_median`, `delta_rfl_pct_mean` | percent | 100·(t2−t1)/t1 reflectance. |
-| `rad_t1_median … rad_t2_mean` | µW/cm²/sr/nm | Per-scene radiance median/mean. |
-| `delta_rad_pct_median`, `delta_rad_pct_mean` | percent | 100·(t2−t1)/t1 radiance. |
+| `rad_t1_median … rad_t2_mean` | µW/cm²/sr/nm | Per-scene radiance median/mean. Earth–Sun (E0) normalized at read time when `radiometry.earth_sun_normalize` (default; see *Radiometry* above). |
+| `delta_rad_pct_median`, `delta_rad_pct_mean` | percent | 100·(t2−t1)/t1 radiance (from the E0-normalized per-scene values). |
 | `absorption_band_flag` | bool | Deep water-vapor band (L2A reflectance is fill). |
 
 ## 7. Aggregated delta — `{site}_{size}_delta.csv`

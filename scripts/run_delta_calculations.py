@@ -72,7 +72,8 @@ def main() -> None:
     scene_ids = pd.unique(pairs[["t1_scene_id", "t2_scene_id"]].values.ravel())
     specs, missing_rad = {}, {}
     for sid in scene_ids:
-        spec = load_scene_spectrum(sid, PICS_ID, PATCH_ID, RFL_DIR, RAD_DIR)
+        spec = load_scene_spectrum(sid, PICS_ID, PATCH_ID, RFL_DIR, RAD_DIR,
+                                   earth_sun_normalize=cfg.earth_sun_normalize)
         specs[sid] = spec
         if spec is None:
             missing_rad[sid] = scene_perchannel_path(sid, PICS_ID, PATCH_ID,

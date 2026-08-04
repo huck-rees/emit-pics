@@ -27,6 +27,13 @@ qc:
 spectra:
   stat: median           # "median" or "mean"
 
+# --- radiometry ---
+radiometry:
+  # Divide L1B radiance by the Earth–Sun eccentricity factor E0 (Spencer 1971)
+  # at read time, bringing every scene to 1 AU (L2A reflectance already is).
+  # Removes the seasonal ~±3.4% 1/d² solar-flux leak from the radiance drift.
+  earth_sun_normalize: true
+
 # --- cross-PICS drift analysis ---
 drift:
   alpha: 0.05            # per-channel significance level (uncorrected p-value)

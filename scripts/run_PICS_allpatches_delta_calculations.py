@@ -94,7 +94,8 @@ def process_patch(pid: str) -> dict:
     scene_ids = pd.unique(pairs[["t1_scene_id", "t2_scene_id"]].values.ravel())
     specs = {}
     for sid in scene_ids:
-        spec = load_scene_spectrum(sid, PICS_ID, pid, RFL_DIR, RAD_DIR)
+        spec = load_scene_spectrum(sid, PICS_ID, pid, RFL_DIR, RAD_DIR,
+                                   earth_sun_normalize=cfg.earth_sun_normalize)
         specs[sid] = spec
         if spec is None:
             rep["missing_rad"][sid] = scene_perchannel_path(sid, PICS_ID, pid,

@@ -39,6 +39,10 @@ class RunConfig:
     require_qc_review: bool = True
     # --- spectra ---
     spectra_stat: str = "median"
+    # --- radiometry ---
+    #: Divide L1B radiance by the Earth–Sun eccentricity factor E0 at read time
+    #: (bring every scene to 1 AU, matching L2A). Applied in the per-scene loaders.
+    earth_sun_normalize: bool = True
     # --- drift analysis ---
     alpha: float = 0.05
     use_aggregated: bool = True
@@ -106,7 +110,7 @@ def load_config(path=None) -> RunConfig:
     products, matching = sec("products"), sec("matching")
     qc, spectra, drift = sec("qc"), sec("spectra"), sec("drift")
     extract, gs, pg = sec("extract"), sec("granule_search"), sec("patch_gen")
-    brdf = sec("brdf")
+    brdf, radiometry = sec("brdf"), sec("radiometry")
 
     # BRDF roster: keep only sites with a patch id set (drop null/blank entries).
     brdf_site_patches = {str(s): str(p) for s, p in (brdf.get("site_patches") or {}).items()
@@ -123,6 +127,7 @@ def load_config(path=None) -> RunConfig:
         vza_tol=float(matching.get("vza_tol", 5.0)),
         require_qc_review=bool(qc.get("require_review", True)),
         spectra_stat=str(spectra.get("stat", "median")),
+        earth_sun_normalize=bool(radiometry.get("earth_sun_normalize", True)),
         alpha=float(drift.get("alpha", 0.05)),
         use_aggregated=bool(drift.get("use_aggregated", True)),
         individual_channels=bool(drift.get("individual_channels", True)),

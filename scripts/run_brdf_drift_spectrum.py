@@ -144,7 +144,9 @@ def main() -> None:
           f"{len(fit_bands)} fit per product")
 
     # 2. Scenes x bands matrices, and the pooled design arrays.
-    mat = {p: brdf_drift.channel_matrix(obs, p, nband) for p in PRODUCTS}
+    mat = {p: brdf_drift.channel_matrix(obs, p, nband,
+                                        earth_sun_normalize=cfg.earth_sun_normalize)
+           for p in PRODUCTS}
     g_all = obs["g"].to_numpy(float)
     t_all = obs["t"].to_numpy(float)
     site_all = obs["site"].to_numpy()
