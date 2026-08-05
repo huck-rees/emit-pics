@@ -28,6 +28,16 @@ acquisition whose in-patch valid fraction falls below a threshold).  Screening
 affects only the per-channel stats — the geometry table and the cached pixel
 cube are always raw and unscreened.
 
+RESUME (``RESUME``, ON by default): mirrors the batched all-patches runner. A
+streaming run can drop an acquisition to a transient error (most often a
+``403 Forbidden`` when a granule's pre-signed URL expires mid-run); such a unit
+writes nothing. With RESUME on, any acquisition whose outputs already exist on
+disk (its pixel cube and/or per-channel CSV — see :func:`_unit_outputs_exist`) is
+skipped **before** its granules are opened, so a re-run re-streams only the
+stragglers.  Skipped scenes' geometry is recovered from their cached cubes and
+the geometry table is *merged* (not overwritten), so the previously-written rows
+survive.  Set ``RESUME = False`` to force a full re-extract of every acquisition.
+
 PIXEL-CUBE CACHE SIZING (per acquisition, per product): a 10 km patch is
 ~28k pixels (~32 MB); cache scales with patch area (quadratic in edge length), so
 a 40 km patch is ~16x that (~500 MB). Enable CACHE_PIXELS only for the patches the
@@ -49,6 +59,7 @@ from emit_pics.config import canonical_token
 from emit_pics.run_config import load_config
 from emit_pics.id_matched_pairs import (
     STAT_COLS,
+    acq_datetime,
     acq_timestamp,
     load_patch_geom_4326,
     sniff_delimiter,
@@ -65,6 +76,7 @@ from emit_pics.single_patch_cube_extract import (
     extract_acquisition,
     geometry_stats_from_cube,
     mask_summaries_from_cube,
+    read_cube_netcdf,
     write_cube_netcdf,
 )
 
@@ -82,6 +94,11 @@ MIN_VALID_FRAC  = cfg.min_valid_frac
 RAD_SHORT_NAME  = cfg.rad_short_name
 RFL_SHORT_NAME  = cfg.rfl_short_name
 
+RESUME = True   # script-local toggle: skip acquisitions already written to disk
+                # (no granules opened for them). Lets a re-run recover only the
+                # acquisition(s) a prior run dropped to transient 403s / URL expiry.
+                # Set False to force a full re-extract of every acquisition.
+
 # Repo-relative paths — every name is built in emit_pics.paths.
 RAD_DIR   = paths.RAD_DIR
 RFL_DIR   = paths.RFL_DIR
@@ -90,6 +107,56 @@ GEOM_DIR  = paths.GEOM_DIR
 CUBE_DIR  = paths.CUBE_DIR
 DICT_PATH = paths.patch_dict(PICS_ID)
 BNDS_PATH = paths.patch_bnds(PICS_ID)
+
+
+def _unit_outputs_exist(ts):
+    """True if this acquisition already has outputs on disk (RESUME key).
+
+    Mirrors the batched runner's key.  With ``CACHE_PIXELS`` on (the default) the
+    pixel **cube** is the key: the per-channel CSVs are not sufficient evidence,
+    because an earlier stats-only pass (``CACHE_PIXELS=False``) writes those CSVs
+    while writing no cubes, and counting them would falsely mark the unit done and
+    skip the very cube this run exists to create.  A cube is written before the
+    screening gate, so *screened* acquisitions also have one; a unit that 403'd
+    mid-stream has none and is correctly retried.  With ``CACHE_PIXELS`` off there
+    is no cube, so fall back to the per-channel CSVs (the only durable artifact).
+    """
+    if CACHE_PIXELS:
+        return paths.pixel_cube(PICS_ID, PATCH_ID, ts).exists()
+    rfl = paths.perchannel(PICS_ID, PATCH_ID, ts, "rfl")
+    rad = paths.perchannel(PICS_ID, PATCH_ID, ts, "rad")
+    return rfl.exists() or rad.exists()
+
+
+def geom_record_from_cube_file(ts):
+    """Rebuild a scene's per-scene geometry record from its cached cube (no stream).
+
+    Lets a RESUME run that SKIPS an already-cached acquisition still contribute
+    that scene's geometry row, so the merged geometry table and dict amendment are
+    rebuilt over the **full** set of cached scenes — not just the freshly-streamed
+    one.  Returns ``None`` if the cube is missing or carries no OBS geometry (e.g.
+    cached with ``WANT_OBS=False``); in that case the scene's prior row still
+    survives via the table merge in :func:`main`.
+    """
+    cube_path = paths.pixel_cube(PICS_ID, PATCH_ID, ts)
+    if not cube_path.exists():
+        return None
+    with read_cube_netcdf(cube_path) as ds:
+        if "sza" not in ds or "vza" not in ds:
+            return None
+        proxy = {"sza": ds["sza"].values, "vza": ds["vza"].values,
+                 "n_pixels": int(ds.sizes["pixel"])}
+        geom = geometry_stats_from_cube(proxy)
+        if geom is None:
+            return None
+        rad_ur = str(ds.attrs.get("rad_ur", ""))
+        return {
+            "scene_id": rad_ur, "granule_ur": rad_ur,
+            "timestamp": str(ds.attrs.get("timestamp", ts)),
+            "datetime": acq_datetime(rad_ur),
+            "has_rfl": "reflectance" in ds,
+            **geom,
+        }
 
 
 def process_acquisition(acq, patch_geom):
@@ -216,15 +283,30 @@ def main() -> None:
         print(f"Aggregate-Flag screening ON (min valid frac {MIN_VALID_FRAC:.0%})")
     if CACHE_PIXELS:
         print(f"Pixel-cube caching ON -> {CUBE_DIR}")
+    if RESUME:
+        print("RESUME ON -> skipping acquisitions already on disk")
 
     # 2. Patch geometry (reprojected to EPSG:4326 for the pixel mask).
     patch_geom = load_patch_geom_4326(BNDS_PATH, PATCH_ID)
 
     # 3. Process every acquisition once; bucket outcomes and collect geometry.
-    produced, screened, errored, missing = [], [], [], []
+    produced, screened, errored, missing, skipped = [], [], [], [], []
     geom_records = []
     for k, acq in enumerate(acquisitions, 1):
         ts = acq["timestamp"]
+
+        # RESUME: an acquisition already written to disk is skipped before its
+        # granules are opened; its geometry is recovered from the cached cube so
+        # the merged table/dict still see it.
+        if RESUME and _unit_outputs_exist(ts):
+            rec = geom_record_from_cube_file(ts)
+            if rec is not None:
+                geom_records.append(rec)
+            skipped.append(ts)
+            print(f"\n[{k}/{len(acquisitions)}] {ts}  already done -> skipped "
+                  f"(no stream)")
+            continue
+
         print(f"\n[{k}/{len(acquisitions)}] {ts}")
         try:
             status, geom_record = process_acquisition(acq, patch_geom)
@@ -239,10 +321,23 @@ def main() -> None:
 
     # 4. Write the per-scene geometry table and amend the dict's SZA/VZA columns.
     if geom_records:
-        geom_df = (pd.DataFrame(geom_records)
-                   .sort_values("datetime").reset_index(drop=True))
+        geom_df = pd.DataFrame(geom_records)
         GEOM_DIR.mkdir(parents=True, exist_ok=True)
         geom_path = paths.geometry(PICS_ID, PATCH_ID)
+        # Merge with any existing table (keyed by timestamp, this run's rows win)
+        # so a RESUME run — which only holds geometry for the scenes it actually
+        # reprocessed plus those recovered from cached cubes — augments the prior
+        # table rather than overwriting it with a subset.
+        if geom_path.exists():
+            geom_df = pd.concat([pd.read_csv(geom_path), geom_df],
+                                ignore_index=True)
+            geom_df = geom_df.drop_duplicates(subset="timestamp", keep="last")
+        # Sort by the canonical "timestamp" ("YYYYMMDDThhmmss"): a homogeneous
+        # string in both freshly-built rows and rows read back from CSV, and
+        # lexically co-monotonic with "datetime".  Sorting by "datetime" after a
+        # merge can mix Timestamp (new) and str (CSV) values, which pandas cannot
+        # order ("'<' not supported between Timestamp and str").
+        geom_df = geom_df.sort_values("timestamp").reset_index(drop=True)
         geom_df.to_csv(geom_path, index=False)
         provenance.write_sidecar(geom_path, cfg.as_dict())
         print(f"\nGeometry table:     {geom_path}  ({len(geom_df)} scene(s))")
@@ -253,14 +348,17 @@ def main() -> None:
     # 5. Completeness summary — distinguish screening drops from error drops.
     print("\n--- Completeness ---")
     print(f"  acquisitions expected:    {len(acquisitions)}")
+    if RESUME:
+        print(f"  skipped (already done):   {len(skipped)}")
     print(f"  produced per-channel:     {len(produced)}")
     print(f"  dropped by screening:     {len(screened)}")
     print(f"  dropped by errors:        {len(errored)}")
     print(f"  no output (missing prod): {len(missing)}")
     if errored:
         print(f"  WARNING: {len(errored)} acquisition(s) dropped by errors "
-              f"after retries -- run is INCOMPLETE; consider re-running: "
-              f"{errored}")
+              f"after retries -- run is INCOMPLETE; consider re-running "
+              f"(RESUME will skip the {len(skipped) + len(produced)} unit(s) "
+              f"already on disk): {errored}")
 
 
 if __name__ == "__main__":
