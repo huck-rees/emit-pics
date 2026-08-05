@@ -16,6 +16,13 @@ Set ``USE_AGGREGATED = False`` to fit the raw per-patch deltas
 (``data/delta_r/per_patch/{PICS}_{PATCH}_delta.csv``) instead, sized by mean
 |SZA| as before.
 
+Setting ``drift.method: bootstrap`` in run_config switches the estimator to the
+one-use-per-scene **matching bootstrap** (:mod:`emit_pics.matched_pairs_bootstrap`),
+which consumes the per-patch tables directly and writes distinct outputs
+(``{size}_drift_bootstrap.csv`` / ``{size}_drift_bootstrap_spectrum.png``) so the
+Theil-Sen products are left intact. ``drift.method: theilsen`` (default) keeps the
+behavior below unchanged.
+
 Outputs
 -------
 * ``data/drift/{size}_drift.csv`` — per-channel drift stats (RAD + RFL).
@@ -46,6 +53,9 @@ PATCH_SIZE = cfg.patch_size
 ALPHA = cfg.alpha
 USE_AGGREGATED = cfg.use_aggregated
 INDIVIDUAL_CHANNELS = cfg.individual_channels
+DRIFT_METHOD = cfg.drift_method       # "theilsen" (default) or "bootstrap"
+N_BOOTSTRAP  = cfg.drift_n_bootstrap
+SEED         = cfg.drift_seed
 ONLY_BANDS = None           # script-local: e.g. [0, 50, 150] to render a subset for testing; None = all
 
 # Repo-relative paths — every name is built in emit_pics.paths.
@@ -58,6 +68,7 @@ CHAN_DIR   = paths.CHANNEL_FIG_DIR
 import matplotlib
 matplotlib.use("Agg")          # non-interactive backend
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from emit_pics.matched_pairs_drift_analysis import (
@@ -68,9 +79,67 @@ from emit_pics.matched_pairs_drift_analysis import (
     plot_channel_scatter,
     plot_drift_spectrum,
 )
+from emit_pics.matched_pairs_bootstrap import compute_bootstrap_drift_spectrum
+
+
+def run_bootstrap() -> None:
+    """One-use-per-scene matching-bootstrap drift (``drift.method: bootstrap``).
+
+    Consumes the raw **per-patch** delta tables (the bootstrap needs the spatial
+    replicates and scene ids that the aggregated tables have collapsed away),
+    fits a per-channel drift with a scene-disjoint matching bootstrap, and writes
+    to distinct outputs so the Theil-Sen products are never overwritten.
+    """
+    try:
+        df = load_delta_tables(PER_PATCH_DIR, PATCH_SIZE)
+    except ValueError as exc:
+        print(f"\nInput schema error: {exc}")
+        sys.exit(1)
+    if df.empty:
+        print(f"No per-patch delta CSVs for patch size {PATCH_SIZE!r} in "
+              f"{PER_PATCH_DIR}.\nRun scripts/run_PICS_allpatches_delta_calculations.py "
+              f"(step 6) for the relevant patches first.")
+        sys.exit(1)
+
+    print(f"Patch size {PATCH_SIZE} km [matching bootstrap, {N_BOOTSTRAP} iters, "
+          f"seed {SEED}]: {len(df)} per-patch row(s) | {df['PICS_ID'].nunique()} PICS "
+          f"| {df['patch_id'].nunique()} patch(es) | {df['pair_id'].nunique()} pair(s) "
+          f"| {df['band_index'].nunique()} channel(s)")
+
+    spec_rad = compute_bootstrap_drift_spectrum(df, "rad", n_boot=N_BOOTSTRAP,
+                                                alpha=ALPHA, seed=SEED)
+    spec_rfl = compute_bootstrap_drift_spectrum(df, "rfl", n_boot=N_BOOTSTRAP,
+                                                alpha=ALPHA, seed=SEED)
+
+    DRIFT_DIR.mkdir(parents=True, exist_ok=True)
+    out_csv = paths.drift_bootstrap(PATCH_SIZE)
+    pd.concat([spec_rad, spec_rfl], ignore_index=True).to_csv(out_csv, index=False)
+    provenance.write_sidecar(out_csv, cfg.as_dict())
+    print(f"\nBootstrap drift stats CSV -> {out_csv}")
+    for name, spec in (("RAD", spec_rad), ("RFL", spec_rfl)):
+        n_fit = int(spec["slope_pct_yr"].notna().sum())
+        n_sig = int(spec["raw_significant"].fillna(False).sum())
+        pairs = spec["n_pairs"].dropna()
+        scenes = spec["n_scenes"].replace(0, np.nan).dropna()
+        note = (f" | ~{pairs.median():.0f} pooled pair(s)/iter across "
+                f"{scenes.median():.0f} scene(s)" if len(pairs) else "")
+        print(f"  {name}: {n_fit} channel(s) fit | {n_sig} with CI excluding 0{note}")
+
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    fig = plot_drift_spectrum(spec_rad, spec_rfl, patch_size=PATCH_SIZE, alpha=ALPHA)
+    spec_png = paths.drift_bootstrap_spectrum_fig(PATCH_SIZE)
+    fig.savefig(spec_png, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Bootstrap drift spectrum -> {spec_png}")
+    print("\n(Per-channel scatter overlays are a Theil-Sen diagnostic; not drawn in "
+          "bootstrap mode.)\nDone.")
 
 
 def main() -> None:
+    if DRIFT_METHOD == "bootstrap":
+        run_bootstrap()
+        return
+
     # 1. Pool the delta tables for this patch size (aggregated by default).
     delta_dir = AGG_DIR if USE_AGGREGATED else PER_PATCH_DIR
     loader = load_aggregated_delta_tables if USE_AGGREGATED else load_delta_tables

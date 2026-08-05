@@ -11,8 +11,8 @@ def test_load_config_reads_values_and_fills_defaults(tmp_path):
         "site: Libya_4\n"
         'patch: "10_7_1"\n'
         'patch_size: "10"\n'
-        "matching: {sza_tol: 3.0, vza_tol: 4.0}\n"
-        "drift: {alpha: 0.1, use_aggregated: false}\n",
+        "matching: {sza_tol: 3.0, vza_tol: 4.0, min_pair_days: 90}\n"
+        "drift: {alpha: 0.1, use_aggregated: false, method: bootstrap, n_bootstrap: 200, seed: 7}\n",
         encoding="utf-8",
     )
     cfg = load_config(p)
@@ -23,8 +23,12 @@ def test_load_config_reads_values_and_fills_defaults(tmp_path):
     assert cfg.patch_size == "10"
     assert cfg.sza_tol == 3.0
     assert cfg.vza_tol == 4.0
+    assert cfg.min_pair_days == 90.0
     assert cfg.alpha == 0.1
     assert cfg.use_aggregated is False
+    assert cfg.drift_method == "bootstrap"
+    assert cfg.drift_n_bootstrap == 200
+    assert cfg.drift_seed == 7
 
     # defaults for omitted sections
     assert cfg.rad_short_name == "EMITL1BRAD"
@@ -44,6 +48,16 @@ def test_earth_sun_normalize_toggle_read(tmp_path):
     cfg = load_config(p)
     assert cfg.earth_sun_normalize is False
     assert cfg.e0_method == "table"
+
+
+def test_matching_and_drift_defaults(tmp_path):
+    p = tmp_path / "rc.yaml"
+    p.write_text("site: Libya_4\npatch: '10_7_1'\npatch_size: '10'\n", encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.min_pair_days == 0.0            # off by default (backward compatible)
+    assert cfg.drift_method == "theilsen"      # Theil-Sen path stays the default
+    assert cfg.drift_n_bootstrap == 1000
+    assert cfg.drift_seed == 0
 
 
 def test_patch_size_coerced_to_string(tmp_path):

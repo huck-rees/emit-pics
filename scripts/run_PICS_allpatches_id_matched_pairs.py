@@ -61,6 +61,7 @@ PICS_ID    = canonical_token(cfg.site)   # canonical filename/label token, e.g. 
 PATCH_SIZE = cfg.patch_size
 SZA_TOL    = cfg.sza_tol
 VZA_TOL    = cfg.vza_tol
+MIN_PAIR_DAYS = cfg.min_pair_days
 REQUIRE_QC_REVIEW = cfg.require_qc_review
 
 # Repo-relative paths — every name is built in emit_pics.paths.
@@ -108,7 +109,7 @@ def process_patch(pid: str):
         return "too_few", None, None
 
     # Matched pairs (geometry-based; identical for both products).
-    all_pairs = find_matched_pairs(scenes, SZA_TOL, VZA_TOL)
+    all_pairs = find_matched_pairs(scenes, SZA_TOL, VZA_TOL, MIN_PAIR_DAYS)
     matched = all_pairs[all_pairs["matched_pair"]].copy()
     n_rad = int(all_pairs["matched_pair"].sum())
     n_rfl = int((matched["t1_has_rfl"] & matched["t2_has_rfl"]).sum())
@@ -173,8 +174,10 @@ def main() -> None:
         print(f"No patches of size {PATCH_SIZE!r} in {DICT_PATH.name}. Exiting.")
         sys.exit(1)
 
+    dt_note = f", Δt>={MIN_PAIR_DAYS:g}d" if MIN_PAIR_DAYS else ""
     print(f"{PICS_ID}, size {PATCH_SIZE} km: identifying matched pairs "
-          f"(|ΔSZA|<={SZA_TOL}°, |ΔVZA|<={VZA_TOL}°) for {len(patch_ids)} patch(es).")
+          f"(|ΔSZA|<={SZA_TOL}°, |ΔVZA|<={VZA_TOL}°{dt_note}) "
+          f"for {len(patch_ids)} patch(es).")
 
     # 2. Detect matched pairs per patch; collect counts for the atts amendment.
     tally = {"produced": 0, "blocked": 0, "too_few": 0, "missing": 0}

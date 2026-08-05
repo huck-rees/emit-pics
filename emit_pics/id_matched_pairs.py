@@ -472,13 +472,15 @@ def scene_geometry_stats(granule, patch_geom_4326,
 # MATCHED PAIRS
 # ============================================================
 def find_matched_pairs(scenes: pd.DataFrame,
-                       sza_tol: float, vza_tol: float) -> pd.DataFrame:
+                       sza_tol: float, vza_tol: float,
+                       min_dt_days: float = 0.0) -> pd.DataFrame:
     """Compute all unique scene pairs and flag the matched ones.
 
     For every unordered pair of processed acquisitions, computes
     ``delta_SZA``, ``delta_VZA`` (absolute mean differences) and ``delta_time``
     (absolute difference in days).  A pair is *matched* when
-    ``delta_SZA <= sza_tol`` and ``delta_VZA <= vza_tol``.
+    ``delta_SZA <= sza_tol`` and ``delta_VZA <= vza_tol`` and
+    ``delta_time >= min_dt_days``.
 
     Parameters
     ----------
@@ -487,6 +489,10 @@ def find_matched_pairs(scenes: pd.DataFrame,
         ``sza_mean``, ``vza_mean`` and ``has_rfl`` columns.
     sza_tol, vza_tol : float
         Matching tolerances in degrees.
+    min_dt_days : float
+        Minimum time separation (days) for a pair to count as matched; ``0.0``
+        (default) imposes no floor. Near-simultaneous pairs carry a drift signal
+        below the per-pair noise floor, so they only add origin scatter.
 
     Returns
     -------
@@ -502,7 +508,8 @@ def find_matched_pairs(scenes: pd.DataFrame,
             dsza = abs(a["sza_mean"] - b["sza_mean"])
             dvza = abs(a["vza_mean"] - b["vza_mean"])
             dt_days = abs((a["datetime"] - b["datetime"]).total_seconds()) / 86400.0
-            matched = bool(dsza <= sza_tol and dvza <= vza_tol)
+            matched = bool(dsza <= sza_tol and dvza <= vza_tol
+                           and dt_days >= min_dt_days)
             rows.append({
                 "t1_scene_id": a["scene_id"], "t1_scene_dt": a["datetime"],
                 "t1_scene_SZA": a["sza_mean"], "t1_scene_VZA": a["vza_mean"],

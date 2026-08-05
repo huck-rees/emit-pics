@@ -49,6 +49,7 @@ PICS_ID  = canonical_token(cfg.site)   # canonical filename/label token, e.g. "L
 PATCH_ID = cfg.patch
 SZA_TOL  = cfg.sza_tol
 VZA_TOL  = cfg.vza_tol
+MIN_PAIR_DAYS = cfg.min_pair_days
 REQUIRE_QC_REVIEW = cfg.require_qc_review
 
 # Repo-relative paths — every name is built in emit_pics.paths.
@@ -95,7 +96,7 @@ def main() -> None:
         sys.exit(1)
 
     # 2. Matched pairs (geometry-based; identical for both products).
-    all_pairs = find_matched_pairs(scenes, SZA_TOL, VZA_TOL)
+    all_pairs = find_matched_pairs(scenes, SZA_TOL, VZA_TOL, MIN_PAIR_DAYS)
     matched = all_pairs[all_pairs["matched_pair"]].copy()
 
     n_rad = int(all_pairs["matched_pair"].sum())
@@ -116,7 +117,9 @@ def main() -> None:
 
     # 4. Print matched pairs to stdout.
     print("\n" + "=" * 60)
-    print(f"MATCHED PAIRS (|ΔSZA|<={SZA_TOL}°, |ΔVZA|<={VZA_TOL}°): {len(matched)}")
+    dt_note = f", Δt>={MIN_PAIR_DAYS:g}d" if MIN_PAIR_DAYS else ""
+    print(f"MATCHED PAIRS (|ΔSZA|<={SZA_TOL}°, |ΔVZA|<={VZA_TOL}°{dt_note}): "
+          f"{len(matched)}")
     print("=" * 60)
     for _, r in matched.iterrows():
         d1 = r["t1_scene_dt"].strftime("%Y-%m-%d")

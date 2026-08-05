@@ -35,6 +35,9 @@ class RunConfig:
     # --- matched-pair tolerances ---
     sza_tol: float = 2.0
     vza_tol: float = 5.0
+    #: Minimum time separation (days) for a pair to count as matched. 0 = off.
+    #: Drops near-simultaneous pairs whose drift signal is below the noise floor.
+    min_pair_days: float = 0.0
     # --- QC gate ---
     require_qc_review: bool = True
     # --- spectra ---
@@ -50,6 +53,13 @@ class RunConfig:
     alpha: float = 0.05
     use_aggregated: bool = True
     individual_channels: bool = True
+    #: Drift estimator: "theilsen" (median-collapse + Theil-Sen, default) or
+    #: "bootstrap" (one-use-per-scene matching bootstrap over per-patch tables).
+    drift_method: str = "theilsen"
+    #: Matching-bootstrap iterations (drift_method == "bootstrap").
+    drift_n_bootstrap: int = 1000
+    #: RNG seed for the matching bootstrap (reproducible resampling).
+    drift_seed: int = 0
     #: {PICS_ID: patch_id} — one representative patch per PICS for the original
     #: cross-PICS pool (publication per-channel figure); disambiguates PICS whose
     #: per_patch/ folder also holds the parallel all-patches experiment's tables.
@@ -128,6 +138,7 @@ def load_config(path=None) -> RunConfig:
         rfl_short_name=str(products.get("rfl_short_name", "EMITL2ARFL")),
         sza_tol=float(matching.get("sza_tol", 2.0)),
         vza_tol=float(matching.get("vza_tol", 5.0)),
+        min_pair_days=float(matching.get("min_pair_days", 0.0)),
         require_qc_review=bool(qc.get("require_review", True)),
         spectra_stat=str(spectra.get("stat", "median")),
         earth_sun_normalize=bool(radiometry.get("earth_sun_normalize", True)),
@@ -135,6 +146,9 @@ def load_config(path=None) -> RunConfig:
         alpha=float(drift.get("alpha", 0.05)),
         use_aggregated=bool(drift.get("use_aggregated", True)),
         individual_channels=bool(drift.get("individual_channels", True)),
+        drift_method=str(drift.get("method", "theilsen")),
+        drift_n_bootstrap=int(drift.get("n_bootstrap", 1000)),
+        drift_seed=int(drift.get("seed", 0)),
         drift_cross_pics_patches={str(s): str(p) for s, p
                                   in (drift.get("cross_pics_patches") or {}).items()
                                   if p not in (None, "")},

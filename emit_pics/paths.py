@@ -134,6 +134,11 @@ def drift(size) -> Path:
     return DRIFT_DIR / f"{size}_drift.csv"
 
 
+def drift_bootstrap(size) -> Path:
+    """Matching-bootstrap per-channel drift stats (``{size}_drift_bootstrap.csv``)."""
+    return DRIFT_DIR / f"{size}_drift_bootstrap.csv"
+
+
 # --------------------------------------------------- BRDF pooled multi-site drift
 # Pooled across many sites, so these are NOT keyed by a single site/patch token.
 # Single-channel products carry the target wavelength; the spectrum spans all bands.
@@ -186,6 +191,11 @@ def granule_coverage_fig(site, patch_size_km) -> Path:
 def drift_spectrum_fig(size) -> Path:
     """Drift-spectrum figure (``{size}_drift_spectrum.png``)."""
     return MATCHED_FIG_DIR / f"{size}_drift_spectrum.png"
+
+
+def drift_bootstrap_spectrum_fig(size) -> Path:
+    """Matching-bootstrap drift-spectrum figure (``{size}_drift_bootstrap_spectrum.png``)."""
+    return MATCHED_FIG_DIR / f"{size}_drift_bootstrap_spectrum.png"
 
 
 def channel_fig(size, wavelength) -> Path:

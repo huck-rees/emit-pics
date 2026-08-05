@@ -18,6 +18,8 @@ products:
 matching:
   sza_tol: 0.5
   vza_tol: 999.0         # VZA no longer used for matching; left high to disable it
+  min_pair_days: 90      # min time separation (days) for a matched pair; 0 = off.
+                         # Drops near-simultaneous pairs (drift signal < noise floor).
 
 # --- manual QC gate ---
 qc:
@@ -42,6 +44,10 @@ drift:
   alpha: 0.05            # per-channel significance level (uncorrected p-value)
   use_aggregated: true   # fit the option-A aggregated tables (vs raw per-patch)
   individual_channels: true
+  method: theilsen       # drift estimator: "theilsen" (median-collapse + Theil-Sen,
+                         # default) or "bootstrap" (one-use-per-scene matching bootstrap)
+  n_bootstrap: 1000      # iterations when method == bootstrap
+  seed: 0                # RNG seed for the matching bootstrap (reproducible)
   # One representative patch per PICS for the ORIGINAL cross-PICS pool used by the
   # publication per-channel figure. Only needed to disambiguate a PICS whose
   # per_patch/ folder also holds the parallel all-patches experiment's tables

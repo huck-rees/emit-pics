@@ -59,6 +59,19 @@ def test_find_matched_pairs_below_only_one_tolerance_not_matched():
     assert out["matched_pair"].tolist() == [False]
 
 
+def test_find_matched_pairs_min_dt_excludes_short_pairs():
+    # (A,B) is 151 days apart and passes SZA/VZA; a 200-day floor drops it,
+    # a 100-day floor keeps it. Boundary is inclusive (>=).
+    scenes = _scenes()
+    assert find_matched_pairs(scenes, 2.0, 5.0, min_dt_days=100.0
+                              )["matched_pair"].tolist() == [True, False, False]
+    assert find_matched_pairs(scenes, 2.0, 5.0, min_dt_days=200.0
+                              )["matched_pair"].tolist() == [False, False, False]
+    # exactly at the threshold still matches (>=)
+    assert find_matched_pairs(scenes, 2.0, 5.0, min_dt_days=151.0
+                              )["matched_pair"].tolist() == [True, False, False]
+
+
 def test_acq_timestamp_and_datetime():
     ur = "EMIT_L1B_RAD_001_20230101T100000_2300107_006"
     assert acq_timestamp(ur) == "20230101T100000"
