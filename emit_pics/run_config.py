@@ -49,6 +49,11 @@ class RunConfig:
     #: E0 provider: "table" (ephemeris lookup from config/earth_sun_distance.txt,
     #: default) or "spencer" (closed-form Spencer 1971 / Iqbal 1983). Agree <0.1%.
     e0_method: str = "table"
+    #: Derived-output namespace label (see :func:`emit_pics.paths.set_variant`).
+    #: "" is the canonical baseline (correction ON -> historical flat layout);
+    #: correction OFF nests deltas/drift/BRDF under this subfolder so an
+    #: uncorrected comparison run never overwrites the corrected baseline.
+    output_variant: str = ""
     # --- drift analysis ---
     alpha: float = 0.05
     use_aggregated: bool = True
@@ -130,6 +135,13 @@ def load_config(path=None) -> RunConfig:
                          if p not in (None, "")}
     brdf_exclude_sites = [str(s) for s in (brdf.get("exclude_sites") or [])]
 
+    # Derived-output namespace: the corrected run is ALWAYS the canonical (flat)
+    # baseline; only an uncorrected run is nested, under `variant_label`
+    # (default "no_earthsun"), so the two result sets never collide.
+    earth_sun_normalize = bool(radiometry.get("earth_sun_normalize", True))
+    variant_label = str(radiometry.get("variant_label", "no_earthsun") or "no_earthsun")
+    output_variant = "" if earth_sun_normalize else variant_label
+
     return RunConfig(
         site=str(raw["site"]),
         patch=str(raw["patch"]),
@@ -141,8 +153,9 @@ def load_config(path=None) -> RunConfig:
         min_pair_days=float(matching.get("min_pair_days", 0.0)),
         require_qc_review=bool(qc.get("require_review", True)),
         spectra_stat=str(spectra.get("stat", "median")),
-        earth_sun_normalize=bool(radiometry.get("earth_sun_normalize", True)),
+        earth_sun_normalize=earth_sun_normalize,
         e0_method=str(radiometry.get("e0_method", "table")),
+        output_variant=output_variant,
         alpha=float(drift.get("alpha", 0.05)),
         use_aggregated=bool(drift.get("use_aggregated", True)),
         individual_channels=bool(drift.get("individual_channels", True)),

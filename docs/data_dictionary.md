@@ -30,6 +30,19 @@ stored; it is `emit_pics.earth_sun.spencer_E0(datetime)` of the scene. The
 per-scene sidecar records the `earth_sun_normalize` flag actually used.
 Reflectance products are unaffected throughout.
 
+**Radiometry — output variant (correction on/off comparison).** To measure the
+correction's impact, set `radiometry.earth_sun_normalize: false` and re-run
+`analyze → drift → brdf`. So the uncorrected run cannot overwrite the corrected
+baseline, its **derived** outputs (deltas §6/§7, matched-pairs drift §8, BRDF
+§9/§14, and their figures) are nested under a `radiometry.variant_label`
+subfolder (default `no_earthsun`), e.g. `data/drift/no_earthsun/10_drift.csv`,
+`data/brdf/no_earthsun/…`. The corrected run (`earth_sun_normalize: true`) is
+**always** the canonical flat layout. Raw inputs — the per-scene stats (§3a),
+geometry (§3b), pixel cubes, QC worksheets and matched-pairs CSVs — are shared
+across variants and never moved (the correction is applied at read time, so no
+re-extraction is needed for either variant). `RunConfig.output_variant` holds the
+active label (`""` for the baseline) and rides along in every sidecar.
+
 ---
 
 ## Directory map

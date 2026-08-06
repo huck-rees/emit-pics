@@ -19,7 +19,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA = REPO_ROOT / "data"
 FIGURES = REPO_ROOT / "figures"
 
-# ------------------------------------------------------------------ directories
+# ------------------------------------------------------------- raw-input directories
+# NEVER varied — the extracted per-scene stats/cubes/geometry are the shared raw
+# inputs and are identical regardless of the Earth–Sun (radiometry) variant. The
+# correction is applied at READ time in the loaders, so these files stay put.
 ROIS_DIR = DATA / "ROIs"
 PATCH_DIR = ROIS_DIR / "patches"
 RAD_DIR = DATA / "radiance"
@@ -28,26 +31,81 @@ MASK_DIR = DATA / "mask_summary"
 GEOM_DIR = DATA / "geometry"
 CUBE_DIR = DATA / "pixel_cubes"
 QC_DIR = DATA / "qc"
-MATCHED_DIR = DATA / "matched_pairs"
-DELTA_PER_PATCH_DIR = DATA / "delta_r" / "per_patch"
-DELTA_AGG_DIR = DATA / "delta_r" / "aggregated"
-DRIFT_DIR = DATA / "drift"
-BRDF_DIR = DATA / "brdf"
-
-SPECTRA_RFL_DIR = FIGURES / "spectra" / "reflectance"
-SPECTRA_RAD_DIR = FIGURES / "spectra" / "radiance"
-MATCHED_FIG_DIR = FIGURES / "matched_pairs"
-CHANNEL_FIG_DIR = MATCHED_FIG_DIR / "individual_channels"
-BRDF_FIG_DIR = FIGURES / "brdf"
+MATCHED_DIR = DATA / "matched_pairs"   # matched pairs are geometry-based (variant-free)
 
 _PRODUCT_DIR = {"rad": RAD_DIR, "rfl": RFL_DIR}
-_SPECTRA_DIR = {"rad": SPECTRA_RAD_DIR, "rfl": SPECTRA_RFL_DIR}
 
-_ALL_OUTPUT_DIRS = (
-    PATCH_DIR, RAD_DIR, RFL_DIR, MASK_DIR, GEOM_DIR, CUBE_DIR, QC_DIR,
-    MATCHED_DIR, DELTA_PER_PATCH_DIR, DELTA_AGG_DIR, DRIFT_DIR, BRDF_DIR, ROIS_DIR,
-    SPECTRA_RFL_DIR, SPECTRA_RAD_DIR, MATCHED_FIG_DIR, CHANNEL_FIG_DIR, BRDF_FIG_DIR,
-)
+# ------------------------------------------------------- derived-output directories
+# These hold radiance-sensitive products (deltas, drift, BRDF, and their figures),
+# so an alternate radiometry variant (e.g. Earth–Sun correction OFF) nests them all
+# under a labelled subfolder to keep it from overwriting the canonical baseline. The
+# baseline variant is the empty string, which reproduces the historical flat layout
+# byte-for-byte. See :func:`set_variant` and ``RunConfig.output_variant``.
+_VARIANT = ""
+
+# Base (un-nested) derived dirs; the public names below are rebuilt from these
+# whenever the active variant changes.
+_DELTA_PER_PATCH_BASE = DATA / "delta_r" / "per_patch"
+_DELTA_AGG_BASE = DATA / "delta_r" / "aggregated"
+_DRIFT_BASE = DATA / "drift"
+_BRDF_BASE = DATA / "brdf"
+_SPECTRA_RFL_BASE = FIGURES / "spectra" / "reflectance"
+_SPECTRA_RAD_BASE = FIGURES / "spectra" / "radiance"
+_MATCHED_FIG_BASE = FIGURES / "matched_pairs"
+_BRDF_FIG_BASE = FIGURES / "brdf"
+
+
+def _rebuild_derived_dirs() -> None:
+    """(Re)compute the variant-nested derived-output dirs + their lookups.
+
+    Idempotent. Called once at import (variant ``""`` -> historical flat layout)
+    and again by :func:`set_variant`. Path-builder functions read these module
+    globals at call time, so rebinding here redirects every derived output.
+    """
+    global DELTA_PER_PATCH_DIR, DELTA_AGG_DIR, DRIFT_DIR, BRDF_DIR
+    global SPECTRA_RFL_DIR, SPECTRA_RAD_DIR, MATCHED_FIG_DIR, CHANNEL_FIG_DIR
+    global BRDF_FIG_DIR, _SPECTRA_DIR, _ALL_OUTPUT_DIRS
+
+    def nest(base: Path) -> Path:
+        return base / _VARIANT if _VARIANT else base
+
+    DELTA_PER_PATCH_DIR = nest(_DELTA_PER_PATCH_BASE)
+    DELTA_AGG_DIR = nest(_DELTA_AGG_BASE)
+    DRIFT_DIR = nest(_DRIFT_BASE)
+    BRDF_DIR = nest(_BRDF_BASE)
+    SPECTRA_RFL_DIR = nest(_SPECTRA_RFL_BASE)
+    SPECTRA_RAD_DIR = nest(_SPECTRA_RAD_BASE)
+    MATCHED_FIG_DIR = nest(_MATCHED_FIG_BASE)
+    CHANNEL_FIG_DIR = MATCHED_FIG_DIR / "individual_channels"
+    BRDF_FIG_DIR = nest(_BRDF_FIG_BASE)
+
+    _SPECTRA_DIR = {"rad": SPECTRA_RAD_DIR, "rfl": SPECTRA_RFL_DIR}
+    _ALL_OUTPUT_DIRS = (
+        PATCH_DIR, RAD_DIR, RFL_DIR, MASK_DIR, GEOM_DIR, CUBE_DIR, QC_DIR,
+        MATCHED_DIR, DELTA_PER_PATCH_DIR, DELTA_AGG_DIR, DRIFT_DIR, BRDF_DIR, ROIS_DIR,
+        SPECTRA_RFL_DIR, SPECTRA_RAD_DIR, MATCHED_FIG_DIR, CHANNEL_FIG_DIR, BRDF_FIG_DIR,
+    )
+
+
+def set_variant(label) -> None:
+    """Select the active radiometry output variant (``""`` = canonical baseline).
+
+    A non-empty *label* (e.g. ``"no_earthsun"``) nests only the derived-output
+    dirs under ``<dir>/<label>/`` so an alternate run cannot overwrite the
+    baseline; raw-input dirs are never affected. Runners call this once, right
+    after :func:`emit_pics.run_config.load_config`, with ``cfg.output_variant``.
+    """
+    global _VARIANT
+    _VARIANT = str(label or "")
+    _rebuild_derived_dirs()
+
+
+def active_variant() -> str:
+    """The active output-variant label (``""`` for the canonical baseline)."""
+    return _VARIANT
+
+
+_rebuild_derived_dirs()   # initialise the derived dirs at import (baseline layout)
 
 
 @lru_cache(maxsize=None)

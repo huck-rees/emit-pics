@@ -4,9 +4,18 @@ If any of these change, an output would silently move to a new location — thes
 tests make that impossible to do by accident.
 """
 
+import pytest
+
 from emit_pics import paths
 
 TS = "20230101T100000"
+
+
+@pytest.fixture
+def reset_variant():
+    """Restore the canonical (baseline) variant after a test mutates it."""
+    yield
+    paths.set_variant("")
 
 
 def test_filenames_match_historical_convention():
@@ -87,3 +96,52 @@ def test_paths_land_in_expected_dirs():
     assert paths.perchannel("Libya_4", "10_7_1", TS, "rfl").parent == paths.RFL_DIR
     assert paths.perchannel("Libya_4", "10_7_1", TS, "rad").parent == paths.RAD_DIR
     assert paths.channel_fig("10", 500.0).parent == paths.CHANNEL_FIG_DIR
+
+
+# ----------------------------------------------------- radiometry output variant
+def test_baseline_variant_is_empty_and_layout_flat():
+    # Default state: no variant -> historical flat layout (regression guard).
+    assert paths.active_variant() == ""
+    assert paths.DRIFT_DIR == paths.DATA / "drift"
+    assert paths.BRDF_DIR == paths.DATA / "brdf"
+    assert paths.DELTA_AGG_DIR == paths.DATA / "delta_r" / "aggregated"
+    assert paths.drift("10") == paths.DATA / "drift" / "10_drift.csv"
+
+
+def test_variant_nests_only_derived_dirs(reset_variant):
+    paths.set_variant("no_earthsun")
+    assert paths.active_variant() == "no_earthsun"
+    # Derived outputs nest under the variant subfolder...
+    assert paths.DELTA_PER_PATCH_DIR == paths.DATA / "delta_r" / "per_patch" / "no_earthsun"
+    assert paths.DELTA_AGG_DIR == paths.DATA / "delta_r" / "aggregated" / "no_earthsun"
+    assert paths.DRIFT_DIR == paths.DATA / "drift" / "no_earthsun"
+    assert paths.BRDF_DIR == paths.DATA / "brdf" / "no_earthsun"
+    assert paths.CHANNEL_FIG_DIR == \
+        paths.FIGURES / "matched_pairs" / "no_earthsun" / "individual_channels"
+    assert paths.BRDF_FIG_DIR == paths.FIGURES / "brdf" / "no_earthsun"
+    # ...and the builder functions follow the redirect.
+    assert paths.drift("10") == paths.DATA / "drift" / "no_earthsun" / "10_drift.csv"
+    assert paths.brdf_design() == paths.DATA / "brdf" / "no_earthsun" / "brdf_design.csv"
+    assert paths.delta_aggregated("Libya_4", "10").parent == paths.DELTA_AGG_DIR
+    # Raw-input dirs are NEVER moved (shared across variants).
+    assert paths.RAD_DIR == paths.DATA / "radiance"
+    assert paths.RFL_DIR == paths.DATA / "reflectance"
+    assert paths.GEOM_DIR == paths.DATA / "geometry"
+    assert paths.MATCHED_DIR == paths.DATA / "matched_pairs"
+    assert paths.perchannel("Libya_4", "10_7_1", TS, "rad").parent == paths.DATA / "radiance"
+
+
+def test_filenames_are_variant_independent(reset_variant):
+    # Only the parent folder changes; the file basename is identical.
+    paths.set_variant("no_earthsun")
+    assert paths.drift("10").name == "10_drift.csv"
+    assert paths.delta_aggregated("Libya_4", "10").name == "Libya_4_10_delta.csv"
+    assert paths.brdf_drift_spectrum().name == "brdf_drift_spectrum.csv"
+
+
+def test_set_variant_round_trips_back_to_baseline(reset_variant):
+    baseline = paths.DRIFT_DIR
+    paths.set_variant("no_earthsun")
+    assert paths.DRIFT_DIR != baseline
+    paths.set_variant("")
+    assert paths.DRIFT_DIR == baseline

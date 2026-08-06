@@ -46,6 +46,7 @@ from emit_pics.run_config import load_config
 # INPUTS — set the roster + knobs in run_config.yaml (brdf:), not here.
 # ============================================================
 cfg = load_config()
+paths.set_variant(cfg.output_variant)   # nest derived outputs under an active radiometry variant
 TARGET_WL     = cfg.brdf_target_wl
 N_BOOTSTRAP   = cfg.brdf_n_bootstrap     # pooled shared-gamma resamples (§7)
 PER_SITE_BOOT = cfg.brdf_per_site_boot   # per-site standalone-gamma resamples (§4b)

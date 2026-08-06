@@ -38,6 +38,12 @@ radiometry:
   # E0 provider: "table" (ephemeris lookup from config/earth_sun_distance.txt,
   # default) or "spencer" (closed-form Spencer 1971 / Iqbal 1983). Agree to <0.1%.
   e0_method: table
+  # To measure the correction's impact, set earth_sun_normalize:false and re-run
+  # analyze -> drift -> brdf. The uncorrected derived outputs (deltas, drift, BRDF
+  # + their figures) then nest under a `variant_label` subfolder, e.g.
+  # data/drift/no_earthsun/, so they never overwrite the corrected baseline. The
+  # corrected run (earth_sun_normalize:true) is ALWAYS the flat canonical layout.
+  # variant_label: no_earthsun   # subfolder name for the uncorrected run
 
 # --- cross-PICS drift analysis ---
 drift:

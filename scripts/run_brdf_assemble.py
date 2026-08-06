@@ -42,6 +42,7 @@ from emit_pics.run_config import load_config
 # INPUTS — set the roster + knobs in run_config.yaml (brdf:), not here.
 # ============================================================
 cfg = load_config()
+paths.set_variant(cfg.output_variant)   # nest derived outputs under an active radiometry variant
 TARGET_WL  = cfg.brdf_target_wl
 MIN_SCENES = cfg.brdf_min_scenes
 

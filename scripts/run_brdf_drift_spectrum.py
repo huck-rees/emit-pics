@@ -45,6 +45,7 @@ from emit_pics.run_config import load_config
 # INPUTS — set the roster + knobs in run_config.yaml (brdf:), not here.
 # ============================================================
 cfg = load_config()
+paths.set_variant(cfg.output_variant)   # nest derived outputs under an active radiometry variant
 TARGET_WL       = cfg.brdf_target_wl
 SPECTRUM_N_BOOT = cfg.brdf_spectrum_n_boot   # per-channel resamples (heavier than §7)
 ALPHA           = cfg.alpha                  # per-channel (raw) significance level

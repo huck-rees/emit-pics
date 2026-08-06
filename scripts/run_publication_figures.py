@@ -172,6 +172,7 @@ def main(argv=None) -> int:
         return 0
 
     cfg = load_config()
+    paths.set_variant(cfg.output_variant)   # nest derived outputs under an active radiometry variant
     themes = ["manuscript", "ppt"] if args.theme == "both" else [args.theme]
     n_written = 0
     for key in args.figures:

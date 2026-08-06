@@ -36,6 +36,7 @@ def test_load_config_reads_values_and_fills_defaults(tmp_path):
     assert cfg.spectra_stat == "median"
     assert cfg.earth_sun_normalize is True     # radiometry block omitted -> default on
     assert cfg.e0_method == "table"            # default E0 provider (ephemeris table)
+    assert cfg.output_variant == ""            # corrected run -> canonical flat layout
 
 
 def test_earth_sun_normalize_toggle_read(tmp_path):
@@ -48,6 +49,31 @@ def test_earth_sun_normalize_toggle_read(tmp_path):
     cfg = load_config(p)
     assert cfg.earth_sun_normalize is False
     assert cfg.e0_method == "table"
+    # Correction off -> derived outputs nest under the default variant subfolder.
+    assert cfg.output_variant == "no_earthsun"
+
+
+def test_output_variant_custom_label_when_correction_off(tmp_path):
+    p = tmp_path / "rc.yaml"
+    p.write_text(
+        "site: Libya_4\npatch: '10_7_1'\npatch_size: '10'\n"
+        "radiometry: {earth_sun_normalize: false, variant_label: raw_rad}\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(p)
+    assert cfg.output_variant == "raw_rad"
+    assert cfg.as_dict()["output_variant"] == "raw_rad"   # rides along in provenance
+
+
+def test_output_variant_ignored_when_correction_on(tmp_path):
+    # The corrected run is ALWAYS the canonical baseline, even if a label is set.
+    p = tmp_path / "rc.yaml"
+    p.write_text(
+        "site: Libya_4\npatch: '10_7_1'\npatch_size: '10'\n"
+        "radiometry: {earth_sun_normalize: true, variant_label: raw_rad}\n",
+        encoding="utf-8",
+    )
+    assert load_config(p).output_variant == ""
 
 
 def test_matching_and_drift_defaults(tmp_path):
