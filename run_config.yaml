@@ -75,6 +75,11 @@ brdf:
     Algeria_5: "10_6_7"
     Mauritania_1: "10_4_3"
   exclude_sites: [Mauritania_2]   # dropped by design (too few QC-surviving scenes)
+  # Optional output sub-namespace for the BRDF products ONLY (data/brdf/<label>/,
+  # figures/brdf/<label>/). BRDF filenames are not patch-size-keyed, so use this
+  # for a size sensitivity run (e.g. label: "20km" with 20 km site_patches) so it
+  # doesn't overwrite the baseline BRDF results. "" / omitted = flat (default).
+  # label: ""
   target_wl: 858.0         # nm; nearest channel is used for the single-channel fit
   min_scenes: 4            # per-site post-QC floor; sites below are dropped
   n_bootstrap: 1000        # resamples for the pooled shared-gamma CI

@@ -43,6 +43,12 @@ _PRODUCT_DIR = {"rad": RAD_DIR, "rfl": RFL_DIR}
 # byte-for-byte. See :func:`set_variant` and ``RunConfig.output_variant``.
 _VARIANT = ""
 
+# Optional extra sub-namespace for the BRDF outputs only (e.g. a patch-size tag
+# like "20km"), so a BRDF sensitivity run doesn't overwrite the baseline BRDF
+# products (whose filenames are not size-keyed). Nests INSIDE the variant folder.
+# Empty string = no extra nesting. See :func:`set_brdf_label` and ``brdf.label``.
+_BRDF_LABEL = ""
+
 # Base (un-nested) derived dirs; the public names below are rebuilt from these
 # whenever the active variant changes.
 _DELTA_PER_PATCH_BASE = DATA / "delta_r" / "per_patch"
@@ -79,6 +85,12 @@ def _rebuild_derived_dirs() -> None:
     CHANNEL_FIG_DIR = MATCHED_FIG_DIR / "individual_channels"
     BRDF_FIG_DIR = nest(_BRDF_FIG_BASE)
 
+    # BRDF-only extra label nests inside the variant folder (e.g. brdf/20km or
+    # brdf/no_earthsun/20km), so patch-size sweeps don't collide with the baseline.
+    if _BRDF_LABEL:
+        BRDF_DIR = BRDF_DIR / _BRDF_LABEL
+        BRDF_FIG_DIR = BRDF_FIG_DIR / _BRDF_LABEL
+
     _SPECTRA_DIR = {"rad": SPECTRA_RAD_DIR, "rfl": SPECTRA_RFL_DIR}
     _ALL_OUTPUT_DIRS = (
         PATCH_DIR, RAD_DIR, RFL_DIR, MASK_DIR, GEOM_DIR, CUBE_DIR, QC_DIR,
@@ -103,6 +115,24 @@ def set_variant(label) -> None:
 def active_variant() -> str:
     """The active output-variant label (``""`` for the canonical baseline)."""
     return _VARIANT
+
+
+def set_brdf_label(label) -> None:
+    """Nest the BRDF outputs under an extra sub-namespace (``""`` = none).
+
+    Independent of :func:`set_variant`: a non-empty *label* (e.g. ``"20km"``)
+    nests only the BRDF data/figure dirs, inside the variant folder, so a BRDF
+    sensitivity run (different patch size, etc.) cannot overwrite the baseline
+    BRDF products. The three BRDF runners call this with ``cfg.brdf_label``.
+    """
+    global _BRDF_LABEL
+    _BRDF_LABEL = str(label or "")
+    _rebuild_derived_dirs()
+
+
+def active_brdf_label() -> str:
+    """The active BRDF-only output label (``""`` when unset)."""
+    return _BRDF_LABEL
 
 
 _rebuild_derived_dirs()   # initialise the derived dirs at import (baseline layout)

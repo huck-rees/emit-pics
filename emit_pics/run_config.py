@@ -73,6 +73,10 @@ class RunConfig:
     # (shares the global drift.alpha and qc.require_review knobs)
     brdf_site_patches: dict = field(default_factory=dict)
     brdf_exclude_sites: list = field(default_factory=list)
+    #: Optional BRDF-only output sub-namespace (e.g. "20km") so a patch-size
+    #: sensitivity run nests under data/brdf/<label>/ instead of overwriting the
+    #: baseline BRDF products. "" = flat (default). See paths.set_brdf_label.
+    brdf_label: str = ""
     brdf_target_wl: float = 858.0
     brdf_min_scenes: int = 4
     brdf_n_bootstrap: int = 1000
@@ -167,6 +171,7 @@ def load_config(path=None) -> RunConfig:
                                   if p not in (None, "")},
         brdf_site_patches=brdf_site_patches,
         brdf_exclude_sites=brdf_exclude_sites,
+        brdf_label=str(brdf.get("label", "") or ""),
         brdf_target_wl=float(brdf.get("target_wl", 858.0)),
         brdf_min_scenes=int(brdf.get("min_scenes", 4)),
         brdf_n_bootstrap=int(brdf.get("n_bootstrap", 1000)),

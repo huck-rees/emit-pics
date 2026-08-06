@@ -122,6 +122,7 @@ def test_brdf_defaults_when_block_absent(tmp_path):
     cfg = load_config(p)
     assert cfg.brdf_site_patches == {}
     assert cfg.brdf_exclude_sites == []
+    assert cfg.brdf_label == ""
     assert cfg.brdf_target_wl == 858.0
     assert cfg.brdf_min_scenes == 4
     assert cfg.brdf_n_bootstrap == 1000
@@ -150,6 +151,19 @@ def test_brdf_roster_drops_null_patches_and_reads_values(tmp_path):
     assert cfg.brdf_exclude_sites == ["Mauritania_2"]
     assert cfg.brdf_target_wl == 660.0
     assert cfg.brdf_min_scenes == 6
+    assert cfg.brdf_label == ""            # absent -> flat baseline
     assert cfg.brdf_spectrum_n_boot == 50
     # BRDF fields ride along in the flat provenance dict.
     assert load_config(p).as_dict()["brdf_target_wl"] == 660.0
+
+
+def test_brdf_label_read_and_in_provenance(tmp_path):
+    p = tmp_path / "rc.yaml"
+    p.write_text(
+        "site: Libya_4\npatch: '20_3_2'\npatch_size: '20'\n"
+        "brdf: {site_patches: {Libya_4: '20_3_2'}, label: '20km'}\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(p)
+    assert cfg.brdf_label == "20km"
+    assert cfg.as_dict()["brdf_label"] == "20km"   # recorded in the sidecar

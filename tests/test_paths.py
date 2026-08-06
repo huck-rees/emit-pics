@@ -16,6 +16,7 @@ def reset_variant():
     """Restore the canonical (baseline) variant after a test mutates it."""
     yield
     paths.set_variant("")
+    paths.set_brdf_label("")
 
 
 def test_filenames_match_historical_convention():
@@ -145,3 +146,34 @@ def test_set_variant_round_trips_back_to_baseline(reset_variant):
     assert paths.DRIFT_DIR != baseline
     paths.set_variant("")
     assert paths.DRIFT_DIR == baseline
+
+
+# ------------------------------------------------------- BRDF-only output label
+def test_brdf_label_nests_only_brdf_dirs(reset_variant):
+    paths.set_brdf_label("20km")
+    assert paths.active_brdf_label() == "20km"
+    # BRDF data + figure dirs nest under the label...
+    assert paths.BRDF_DIR == paths.DATA / "brdf" / "20km"
+    assert paths.BRDF_FIG_DIR == paths.FIGURES / "brdf" / "20km"
+    assert paths.brdf_design() == paths.DATA / "brdf" / "20km" / "brdf_design.csv"
+    assert paths.brdf_drift_spectrum_fig() == paths.FIGURES / "brdf" / "20km" / "brdf_drift_spectrum.png"
+    # ...but nothing else moves (matched-pairs drift, deltas, inputs untouched).
+    assert paths.DRIFT_DIR == paths.DATA / "drift"
+    assert paths.DELTA_AGG_DIR == paths.DATA / "delta_r" / "aggregated"
+    assert paths.RAD_DIR == paths.DATA / "radiance"
+
+
+def test_brdf_label_composes_with_variant(reset_variant):
+    paths.set_variant("no_earthsun")
+    paths.set_brdf_label("20km")
+    # variant is the outer folder, the BRDF label nests inside it.
+    assert paths.BRDF_DIR == paths.DATA / "brdf" / "no_earthsun" / "20km"
+    assert paths.brdf_drift_spectrum() == \
+        paths.DATA / "brdf" / "no_earthsun" / "20km" / "brdf_drift_spectrum.csv"
+    # the non-BRDF derived dirs still carry only the variant, not the BRDF label.
+    assert paths.DRIFT_DIR == paths.DATA / "drift" / "no_earthsun"
+
+
+def test_brdf_label_empty_is_flat_baseline():
+    assert paths.active_brdf_label() == ""
+    assert paths.BRDF_DIR == paths.DATA / "brdf"

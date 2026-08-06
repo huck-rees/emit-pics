@@ -181,6 +181,7 @@ def main(argv=None) -> int:
 
     cfg = load_config()
     paths.set_variant(cfg.output_variant)   # nest derived outputs under an active radiometry variant
+    paths.set_brdf_label(cfg.brdf_label)    # read BRDF products from the labelled sub-namespace, if any
     themes = ["manuscript", "ppt"] if args.theme == "both" else [args.theme]
     n_written = 0
     for key in args.figures:
