@@ -43,17 +43,25 @@ def _load_drift_spectrum(cfg):
 def _load_mp_drift_spectrum(cfg):
     """Matched-pairs cross-PICS drift spectrum, adapted to the BRDF builder schema.
 
-    Reads ``data/drift/{size}_drift.csv`` (written by
-    ``run_matched_pairs_drift_analysis.py``) and renames its columns into the names
+    Reads whichever matched-pairs drift CSV the configured estimator wrote —
+    ``{size}_drift.csv`` (Theil-Sen, the default) or ``{size}_drift_bootstrap.csv``
+    (``drift.method: bootstrap``) — and renames its columns into the names
     ``figures.drift_spectrum`` expects, so the matched-pairs figure is rendered by
-    the same builder with the same specs (incl. the +/-2.5 %/yr y-limits). Water-
-    vapor absorption bands and unfit (NaN-slope) channels are marked ``unstable`` so
-    the builder drops them, exactly as it drops BRDF's numerically unstable channels.
+    the same builder with the same specs (incl. the +/-2.5 %/yr y-limits). Both CSVs
+    share the same schema (``slope_pct_yr``/``ci_*_pct_yr``/``raw_significant``), so
+    for the bootstrap file the marker becomes the bootstrap median and the whiskers
+    its percentile CI. Water-vapor absorption bands and unfit (NaN-slope) channels
+    are marked ``unstable`` so the builder drops them, exactly as it drops BRDF's
+    numerically unstable channels.
     """
-    csv = paths.drift(cfg.patch_size)
+    if cfg.drift_method == "bootstrap":
+        csv = paths.drift_bootstrap(cfg.patch_size)
+        hint = "scripts/run_matched_pairs_drift_analysis.py with drift.method: bootstrap"
+    else:
+        csv = paths.drift(cfg.patch_size)
+        hint = "scripts/run_matched_pairs_drift_analysis.py"
     if not csv.exists():
-        return None, (f"{csv.name} not found — run "
-                      "scripts/run_matched_pairs_drift_analysis.py first.")
+        return None, f"{csv.name} not found — run {hint} first."
     df = pd.read_csv(csv).rename(columns={
         "slope_pct_yr": "gamma_pct_yr",
         "ci_low_pct_yr": "ci_lo_pct_yr",
