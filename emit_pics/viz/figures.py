@@ -442,6 +442,18 @@ def _draw_site_map(ax, sites_gdf, *, highlight=None, scale_km=1000, sc=1.0,
         ax.add_patch(Rectangle((x0, y0), x1 - x0, y1 - y0, facecolor="white",
                                alpha=fade, edgecolor="none", zorder=1))
 
+    # National borders as grey lines (Natural Earth admin-0; cartopy is the data
+    # source). Best-effort — skipped if the shapefile can't be reached.
+    try:
+        import geopandas as gpd
+        import cartopy.io.shapereader as shpreader
+        bshp = shpreader.natural_earth(resolution="50m", category="cultural",
+                                       name="admin_0_boundary_lines_land")
+        borders = gpd.read_file(bshp).to_crs(3857).cx[x0:x1, y0:y1]
+        borders.plot(ax=ax, color="0.5", linewidth=0.5 * sc, zorder=2)
+    except Exception as exc:                      # pragma: no cover - network dependent
+        print(f"[site_overview_map] national borders skipped ({exc}).")
+
     # Actual PICS ROI boxes: soft red fill + crisp red border (no stars).
     sites.plot(ax=ax, facecolor="#D7191C", alpha=0.28, edgecolor="none", zorder=3)
     sites.boundary.plot(ax=ax, color="#B2182B", linewidth=1.3 * sc, zorder=4)
@@ -529,6 +541,74 @@ def site_overview_map(sites_gdf, *, highlight="Libya 4", scale_km=1000,
     if style.show_title():
         ax.set_title(suptitle or "Study PICS — North African calibration sites",
                      fontsize=12 * sc, fontweight="bold")
+    return fig
+
+
+def _site_map_extent_lonlat(sites_gdf, *, margin_frac=0.10):
+    """The lon/lat (min_lon, min_lat, max_lon, max_lat) box of the site map.
+
+    Computed exactly as :func:`_draw_site_map` frames itself — Web-Mercator bounds
+    plus a *margin_frac* margin — then inverse-transformed to degrees, so the inset
+    rectangle matches the locator map's extent.
+    """
+    from pyproj import Transformer
+    s = sites_gdf.to_crs(3857)
+    minx, miny, maxx, maxy = s.total_bounds
+    m = margin_frac * max(maxx - minx, maxy - miny)
+    inv = Transformer.from_crs(3857, 4326, always_xy=True)
+    lon0, lat0 = inv.transform(minx - m, miny - m)
+    lon1, lat1 = inv.transform(maxx + m, maxy + m)
+    return lon0, lat0, lon1, lat1
+
+
+def africa_locator(sites_gdf, *, panel_in=3.0, africa_extent=(-20, -37, 55, 40),
+                   rect_color="k", suptitle=None):
+    """Simple Africa inset: the continent with the site-map extent as a black box.
+
+    A minimal locator for the corner of Fig. 1 — Africa's countries in light grey
+    (Natural Earth admin-0 via cartopy) with the :func:`site_overview_map` extent
+    drawn as a rectangle, so a reader sees where the study region sits. Frame/ticks
+    are stripped; no panel letter is drawn.
+
+    Parameters
+    ----------
+    sites_gdf : geopandas.GeoDataFrame
+        Study PICS (any CRS) — used only to reproduce the site-map extent box.
+    panel_in : float
+        Figure width in inches (small — this is an inset).
+    africa_extent : tuple
+        ``(min_lon, min_lat, max_lon, max_lat)`` view window (default whole continent).
+    rect_color : str
+        Colour of the study-region rectangle (default black).
+    suptitle : str or None
+        Title (drawn only under a title-showing theme).
+    """
+    import geopandas as gpd
+    import cartopy.io.shapereader as shpreader
+
+    sc = style.scale()
+    lon0, lat0, lon1, lat1 = _site_map_extent_lonlat(sites_gdf)
+    x0, y0, x1, y1 = africa_extent
+
+    fig, ax = plt.subplots(figsize=(panel_in, panel_in * 1.12), layout="constrained")
+    try:
+        shp = shpreader.natural_earth(resolution="110m", category="cultural",
+                                      name="admin_0_countries")
+        world = gpd.read_file(shp)
+        africa = world[world["CONTINENT"] == "Africa"] if "CONTINENT" in world.columns else world
+        africa.plot(ax=ax, facecolor="#e9e4d8", edgecolor="0.6", linewidth=0.3 * sc, zorder=1)
+    except Exception as exc:                      # pragma: no cover - network dependent
+        print(f"[africa_locator] Africa outline skipped ({exc}); drawing box only.")
+        ax.set_facecolor("white")
+
+    ax.add_patch(Rectangle((lon0, lat0), lon1 - lon0, lat1 - lat0, fill=False,
+                           edgecolor=rect_color, linewidth=1.5 * sc, zorder=5))
+    ax.set_xlim(x0, x1)
+    ax.set_ylim(y0, y1)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    if style.show_title():
+        ax.set_title(suptitle or "Africa", fontsize=11 * sc, fontweight="bold")
     return fig
 
 

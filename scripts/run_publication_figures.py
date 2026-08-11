@@ -126,8 +126,8 @@ def _load_patch_coverage(cfg):
     return {"patches": patches, "site": pics_geodataframe(cfg.site)}, bnds.name
 
 
-def _load_site_map(cfg, *, highlight="Libya 4"):
-    """Fig. 1A inputs: the study PICS roster as boxes for the locator map.
+def _study_sites(cfg):
+    """The study PICS as a GeoDataFrame of ROI boxes, plus a provenance note.
 
     The site set is the BRDF roster (the sites actually in the study, e.g. the
     five North-African PICS) — NOT every box in sites.yaml — resolved through
@@ -137,11 +137,21 @@ def _load_site_map(cfg, *, highlight="Libya 4"):
     roster = list(cfg.brdf_site_patches) or None      # tokens, e.g. "Libya_4"
     if roster:
         sites = pd.concat([pics_geodataframe(s) for s in roster], ignore_index=True)
-        note = f"{len(sites)} study PICS (BRDF roster)"
-    else:
-        sites = pics_geodataframe(None)               # fall back to all sites.yaml boxes
-        note = f"{len(sites)} PICS (all of sites.yaml — brdf.site_patches empty)"
+        return sites, f"{len(sites)} study PICS (BRDF roster)"
+    sites = pics_geodataframe(None)                    # fall back to all sites.yaml boxes
+    return sites, f"{len(sites)} PICS (all of sites.yaml — brdf.site_patches empty)"
+
+
+def _load_site_map(cfg, *, highlight="Libya 4"):
+    """Fig. 1A inputs: the study PICS roster as boxes for the locator map."""
+    sites, note = _study_sites(cfg)
     return {"sites_gdf": sites, "highlight": highlight}, note
+
+
+def _load_africa_inset(cfg):
+    """Fig. 1B inputs: the study PICS (only their extent is used for the box)."""
+    sites, note = _study_sites(cfg)
+    return {"sites_gdf": sites}, note
 
 
 def _load_coverage_single(cfg, *, highlight="Libya 4", coverage_product="rfl"):
@@ -163,6 +173,8 @@ def _load_coverage_single(cfg, *, highlight="Libya 4", coverage_product="rfl"):
 FIGURES = {
     "site_map": {"number": "fig01a", "load": _load_site_map,
                  "build": figures.site_overview_map},
+    "africa_inset": {"number": "fig01b", "load": _load_africa_inset,
+                     "build": figures.africa_locator},
     "coverage_map": {"number": "fig01c", "load": _load_coverage_single,
                      "build": figures.patch_coverage_single},
     "patch_coverage": {"number": "fig01d", "load": _load_patch_coverage,
