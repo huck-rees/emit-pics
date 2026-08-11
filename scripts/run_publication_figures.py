@@ -126,18 +126,14 @@ def _load_patch_coverage(cfg):
     return {"patches": patches, "site": pics_geodataframe(cfg.site)}, bnds.name
 
 
-def _load_study_overview(cfg, *, highlight="Libya 4", coverage_product="rfl"):
-    """Fig. 1 inputs: the study PICS roster (panel A) + the highlighted site's
-    patch grid & boundary (panel C).
+def _load_site_map(cfg, *, highlight="Libya 4"):
+    """Fig. 1A inputs: the study PICS roster as boxes for the locator map.
 
     The site set is the BRDF roster (the sites actually in the study, e.g. the
     five North-African PICS) — NOT every box in sites.yaml — resolved through
-    ``pics_geodataframe`` so the bbox geometry + centre come from the one source of
-    truth. Panel C reads the highlighted site's coverage-tagged patch gpkg.
+    ``pics_geodataframe`` so the bbox geometry comes from the one source of truth.
     """
-    from emit_pics.id_granules import load_patches
     from emit_pics.config import pics_geodataframe
-
     roster = list(cfg.brdf_site_patches) or None      # tokens, e.g. "Libya_4"
     if roster:
         sites = pd.concat([pics_geodataframe(s) for s in roster], ignore_index=True)
@@ -145,25 +141,31 @@ def _load_study_overview(cfg, *, highlight="Libya 4", coverage_product="rfl"):
     else:
         sites = pics_geodataframe(None)               # fall back to all sites.yaml boxes
         note = f"{len(sites)} PICS (all of sites.yaml — brdf.site_patches empty)"
+    return {"sites_gdf": sites, "highlight": highlight}, note
 
+
+def _load_coverage_single(cfg, *, highlight="Libya 4", coverage_product="rfl"):
+    """Fig. 1C inputs: the highlighted site's coverage-tagged patch grid + boundary."""
+    from emit_pics.id_granules import load_patches
+    from emit_pics.config import pics_geodataframe
     bnds = paths.patch_bnds(highlight)
     if not bnds.exists():
         return None, f"{bnds.name} not found — run scripts/run_id_granules.py first."
     patches = load_patches(bnds, cfg.search_patch_size_km)
     count_col = f"n_gran_ovlp_{coverage_product}"
     count_label = "L1B radiance" if coverage_product == "rad" else "L2A reflectance"
-    return ({"sites_gdf": sites, "patches": patches,
-             "boundary": pics_geodataframe(highlight),
-             "highlight": highlight, "count_col": count_col,
-             "count_label": count_label},
-            f"{note}; {highlight} patches from {bnds.name}")
+    return ({"patches": patches, "boundary": pics_geodataframe(highlight),
+             "count_col": count_col, "count_label": count_label},
+            f"{highlight} patches from {bnds.name}")
 
 
 #: figure key -> {number (manuscript sequence), loader, builder}.
 FIGURES = {
-    "study_overview": {"number": "fig01", "load": _load_study_overview,
-                       "build": figures.study_overview},
-    "patch_coverage": {"number": "fig01b", "load": _load_patch_coverage,
+    "site_map": {"number": "fig01a", "load": _load_site_map,
+                 "build": figures.site_overview_map},
+    "coverage_map": {"number": "fig01c", "load": _load_coverage_single,
+                     "build": figures.patch_coverage_single},
+    "patch_coverage": {"number": "fig01d", "load": _load_patch_coverage,
                        "build": figures.patch_coverage},
     "matched_pairs": {"number": "fig02", "load": _load_matched_pairs,
                       "build": figures.matched_pairs_geometry},
@@ -200,11 +202,11 @@ def main(argv=None) -> int:
     ap.add_argument("--patch", default="10_7_1",
                     help="patch id for per-patch figures (default: 10_7_1, Libya 4).")
     ap.add_argument("--highlight", default="Libya 4",
-                    help="site emphasised in study_overview panel A / subject of panels "
-                         "B & C (default: Libya 4).")
+                    help="site bolded in the site_map, and whose grid the coverage_map "
+                         "draws (default: Libya 4).")
     ap.add_argument("--coverage-product", choices=["rad", "rfl"], default="rfl",
-                    help="which product's per-patch scene count colours study_overview "
-                         "panel C (default: rfl / L2A).")
+                    help="which product's per-patch scene count colours the coverage_map "
+                         "(default: rfl / L2A).")
     ap.add_argument("--wavelength", type=float, default=1030.0,
                     help="target wavelength (nm) for per-channel figures; the "
                          "nearest non-absorption channel is drawn (default: 1030).")
