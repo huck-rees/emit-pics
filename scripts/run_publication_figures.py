@@ -126,9 +126,44 @@ def _load_patch_coverage(cfg):
     return {"patches": patches, "site": pics_geodataframe(cfg.site)}, bnds.name
 
 
+def _load_study_overview(cfg, *, highlight="Libya 4", coverage_product="rfl"):
+    """Fig. 1 inputs: the study PICS roster (panel A) + the highlighted site's
+    patch grid & boundary (panel C).
+
+    The site set is the BRDF roster (the sites actually in the study, e.g. the
+    five North-African PICS) — NOT every box in sites.yaml — resolved through
+    ``pics_geodataframe`` so the bbox geometry + centre come from the one source of
+    truth. Panel C reads the highlighted site's coverage-tagged patch gpkg.
+    """
+    from emit_pics.id_granules import load_patches
+    from emit_pics.config import pics_geodataframe
+
+    roster = list(cfg.brdf_site_patches) or None      # tokens, e.g. "Libya_4"
+    if roster:
+        sites = pd.concat([pics_geodataframe(s) for s in roster], ignore_index=True)
+        note = f"{len(sites)} study PICS (BRDF roster)"
+    else:
+        sites = pics_geodataframe(None)               # fall back to all sites.yaml boxes
+        note = f"{len(sites)} PICS (all of sites.yaml — brdf.site_patches empty)"
+
+    bnds = paths.patch_bnds(highlight)
+    if not bnds.exists():
+        return None, f"{bnds.name} not found — run scripts/run_id_granules.py first."
+    patches = load_patches(bnds, cfg.search_patch_size_km)
+    count_col = f"n_gran_ovlp_{coverage_product}"
+    count_label = "L1B radiance" if coverage_product == "rad" else "L2A reflectance"
+    return ({"sites_gdf": sites, "patches": patches,
+             "boundary": pics_geodataframe(highlight),
+             "highlight": highlight, "count_col": count_col,
+             "count_label": count_label},
+            f"{note}; {highlight} patches from {bnds.name}")
+
+
 #: figure key -> {number (manuscript sequence), loader, builder}.
 FIGURES = {
-    "patch_coverage": {"number": "fig01", "load": _load_patch_coverage,
+    "study_overview": {"number": "fig01", "load": _load_study_overview,
+                       "build": figures.study_overview},
+    "patch_coverage": {"number": "fig01b", "load": _load_patch_coverage,
                        "build": figures.patch_coverage},
     "matched_pairs": {"number": "fig02", "load": _load_matched_pairs,
                       "build": figures.matched_pairs_geometry},
@@ -164,6 +199,12 @@ def main(argv=None) -> int:
                     help="write flat into this dir (e.g. the manuscript repo's figures/).")
     ap.add_argument("--patch", default="10_7_1",
                     help="patch id for per-patch figures (default: 10_7_1, Libya 4).")
+    ap.add_argument("--highlight", default="Libya 4",
+                    help="site emphasised in study_overview panel A / subject of panels "
+                         "B & C (default: Libya 4).")
+    ap.add_argument("--coverage-product", choices=["rad", "rfl"], default="rfl",
+                    help="which product's per-patch scene count colours study_overview "
+                         "panel C (default: rfl / L2A).")
     ap.add_argument("--wavelength", type=float, default=1030.0,
                     help="target wavelength (nm) for per-channel figures; the "
                          "nearest non-absorption channel is drawn (default: 1030).")
@@ -186,9 +227,11 @@ def main(argv=None) -> int:
     n_written = 0
     for key in args.figures:
         spec = FIGURES[key]
-        # Pass --patch only to loaders that take it (per-patch figures).
+        # Pass each optional CLI knob only to loaders whose signature accepts it.
         load_params = inspect.signature(spec["load"]).parameters
-        load_kw = {"patch": args.patch} if "patch" in load_params else {}
+        _load_cli = {"patch": args.patch, "highlight": args.highlight,
+                     "coverage_product": args.coverage_product}
+        load_kw = {k: v for k, v in _load_cli.items() if k in load_params}
         kwargs, note = spec["load"](cfg, **load_kw)
         if kwargs is None:
             print(f"[skip] {key}: {note}")
