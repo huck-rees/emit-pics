@@ -72,6 +72,14 @@ def _load_mp_drift_spectrum(cfg):
     return {"df": df}, csv.name
 
 
+def _load_brdf_cos_sza(cfg):
+    """Fig. 2 inputs: the pooled BRDF design table (per-scene cos(SZA) + median rho)."""
+    csv = paths.brdf_design()
+    if not csv.exists():
+        return None, f"{csv.name} not found — run scripts/run_brdf_assemble.py first."
+    return {"design": pd.read_csv(csv), "target_wl": cfg.brdf_target_wl}, csv.name
+
+
 def _load_matched_pairs(cfg, *, patch="10_7_1"):
     csv = paths.matched_pairs(cfg.site, patch)
     if not csv.exists():
@@ -179,7 +187,9 @@ FIGURES = {
                      "build": figures.patch_coverage_single},
     "patch_coverage": {"number": "fig01d", "load": _load_patch_coverage,
                        "build": figures.patch_coverage},
-    "matched_pairs": {"number": "fig02", "load": _load_matched_pairs,
+    "brdf_cos_sza": {"number": "fig02", "load": _load_brdf_cos_sza,
+                     "build": figures.brdf_cos_sza},
+    "matched_pairs": {"number": "fig02b", "load": _load_matched_pairs,
                       "build": figures.matched_pairs_geometry},
     "drift_spectrum": {"number": "fig03", "load": _load_drift_spectrum,
                        "build": figures.drift_spectrum,
