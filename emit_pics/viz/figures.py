@@ -278,7 +278,12 @@ def channel_drift(deltas, drift, *, product="rad", target_nm=1030.0,
     return fig
 
 
-def brdf_cos_sza(design, *, fig_width=6.5, aspect=0.52, color_by_site=True,
+def _norm_site(s):
+    """Normalize a site id for matching (case/space/underscore-insensitive)."""
+    return str(s).strip().lower().replace(" ", "_")
+
+
+def brdf_cos_sza(design, *, site="Libya_4", fig_width=6.5, aspect=0.52,
                  target_wl=None, suptitle=None):
     """Fig. 2: in-patch median vs cos(SZA) — radiance (A) and reflectance (B).
 
@@ -286,23 +291,25 @@ def brdf_cos_sza(design, *, fig_width=6.5, aspect=0.52, color_by_site=True,
     with solar-illumination angle (radiance because incident flux scales with
     ``cos(SZA)``, reflectance through residual surface BRDF). Reads the pooled BRDF
     design table (``data/brdf/brdf_design.csv``: per-scene ``g = cos(SZA)`` and the
-    in-patch median ``rho_rad`` / ``rho_rfl``). Points are coloured by PICS (the
-    per-site baselines the BRDF model fits); one ordinary-least-squares line is fit
-    per panel, and its statistics ($R^2$, slope $m$, $p$, $n$) are printed top-left.
+    in-patch median ``rho_rad`` / ``rho_rfl``). A single OLS line is fit per panel,
+    with its statistics ($R^2$, slope $m$, $p$, $n$) printed top-left.
 
-    Total width is fixed at *fig_width* inches (default 6.5) to meet the publication
-    spec; fonts/markers still follow the active theme.
+    By default the figure is restricted to **one PICS** (*site*, default Libya 4) so
+    the relationship is a clean single-surface fit; pass ``site=None`` to pool every
+    site (coloured by PICS) instead. Total width is fixed at *fig_width* inches
+    (default 6.5) to meet the publication spec; fonts follow the active theme.
 
     Parameters
     ----------
     design : pandas.DataFrame
         BRDF design table with ``g``, ``rho_rad``, ``rho_rfl`` (and ``site``).
+    site : str or None
+        Restrict to this PICS (matched case/space/underscore-insensitively).
+        ``None`` pools all sites and colours points by PICS.
     fig_width : float
         Total figure width in inches (default 6.5).
     aspect : float
         Height / width of the whole figure.
-    color_by_site : bool
-        Colour/shape points by PICS (needs a ``site`` column); else single product colour.
     target_wl : float or None
         Target band (nm) for the on-figure title (slide theme only).
     suptitle : str or None
@@ -311,19 +318,23 @@ def brdf_cos_sza(design, *, fig_width=6.5, aspect=0.52, color_by_site=True,
     from scipy.stats import linregress
 
     sc = style.scale()
+    pooled = site is None or "site" not in design.columns
+    if not pooled:
+        design = design[design["site"].map(_norm_site) == _norm_site(site)]
+        site_label = str(site).replace("_", " ")
+    styles = style.site_styles(design["site"].unique()) if pooled else None
+
     fig, axes = plt.subplots(1, 2, figsize=(fig_width, fig_width * aspect),
                              layout="constrained")
     prods = (("rad", "rho_rad", "Median radiance (µW/cm²/sr/nm)"),
              ("rfl", "rho_rfl", "Median reflectance (unitless)"))
-    use_site = color_by_site and "site" in design.columns
-    styles = style.site_styles(design["site"].unique()) if use_site else None
 
     for ax, (key, col, ylab) in zip(axes, prods):
         d = design[np.isfinite(design["g"]) & np.isfinite(design[col])]
         x = d["g"].to_numpy(dtype=float)
         y = d[col].to_numpy(dtype=float)
 
-        if use_site:
+        if pooled:
             for s, gg in d.groupby("site"):
                 st = styles[s]
                 ax.scatter(gg["g"], gg[col], s=11 * sc, color=st["color"],
@@ -331,34 +342,36 @@ def brdf_cos_sza(design, *, fig_width=6.5, aspect=0.52, color_by_site=True,
                            alpha=0.85, zorder=3, label=str(s))
         else:
             pc = style.PRODUCT_STYLE[key]
-            ax.scatter(x, y, s=11 * sc, color=pc["color"], marker=pc["marker"],
+            ax.scatter(x, y, s=13 * sc, color=pc["color"], marker=pc["marker"],
                        edgecolors="k", linewidths=0.3 * sc, alpha=0.85, zorder=3)
 
         # One OLS line per panel + a top-left stats box (R², slope, p, n).
+        header = "" if pooled else f"{site_label}\n"
         if x.size >= 3 and np.ptp(x) > 0:
             lr = linregress(x, y)
             xr = np.array([x.min(), x.max()])
             ax.plot(xr, lr.intercept + lr.slope * xr, color="k", lw=1.4 * sc, zorder=4)
             pstr = "p < 0.001" if lr.pvalue < 1e-3 else f"p = {lr.pvalue:.3f}"
-            txt = (f"$R^2$ = {lr.rvalue**2:.3f}\n"
+            txt = (f"{header}$R^2$ = {lr.rvalue**2:.3f}\n"
                    f"m = {lr.slope:.3g}\n"
                    f"{pstr}\n"
                    f"n = {x.size}")
         else:
-            txt = f"n = {x.size}\n(insufficient for fit)"
+            txt = f"{header}n = {x.size}\n(insufficient for fit)"
         ax.text(0.03, 0.97, txt, transform=ax.transAxes, va="top", ha="left",
                 fontsize=7 * sc, family="monospace", zorder=6,
-                bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.85))
+                bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9))
 
         ax.set_xlabel("cos(SZA)")
         ax.set_ylabel(ylab)
 
-    if use_site:
+    if pooled:
         axes[0].legend(loc="lower right", fontsize=6.5 * sc, framealpha=0.9,
                        edgecolor="0.7", title="PICS", title_fontsize=6.5 * sc)
     if style.show_title():
-        t = suptitle or ("Illumination dependence of radiance and reflectance"
-                         + (f" — band ≈ {target_wl:.0f} nm" if target_wl else ""))
+        subj = "all PICS" if pooled else site_label
+        t = suptitle or (f"Illumination dependence — {subj}"
+                         + (f", band ≈ {target_wl:.0f} nm" if target_wl else ""))
         fig.suptitle(t, fontsize=12 * sc, fontweight="bold")
     return fig
 

@@ -72,12 +72,18 @@ def _load_mp_drift_spectrum(cfg):
     return {"df": df}, csv.name
 
 
-def _load_brdf_cos_sza(cfg):
-    """Fig. 2 inputs: the pooled BRDF design table (per-scene cos(SZA) + median rho)."""
+def _load_brdf_cos_sza(cfg, *, highlight="Libya 4"):
+    """Fig. 2 inputs: the BRDF design table (per-scene cos(SZA) + median rho).
+
+    Restricted to one PICS (*highlight*, default Libya 4) so the panels are a clean
+    single-surface fit; the builder accepts ``site=None`` to pool all sites.
+    """
+    from emit_pics.config import canonical_token
     csv = paths.brdf_design()
     if not csv.exists():
         return None, f"{csv.name} not found — run scripts/run_brdf_assemble.py first."
-    return {"design": pd.read_csv(csv), "target_wl": cfg.brdf_target_wl}, csv.name
+    return ({"design": pd.read_csv(csv), "site": canonical_token(highlight),
+             "target_wl": cfg.brdf_target_wl}, f"{csv.name} ({highlight})")
 
 
 def _load_matched_pairs(cfg, *, patch="10_7_1"):
