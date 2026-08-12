@@ -33,6 +33,20 @@ from emit_pics.viz import figures, style
 # --------------------------------------------------------------------- loaders
 # Each loader reads already-generated pipeline outputs and returns
 # ``(build_kwargs, source_note)``, or ``(None, reason)`` if an input is missing.
+def _load_drift_spectrum(cfg):
+    """Pooled BRDF drift spectrum gamma(lambda), read straight from the BRDF CSV.
+
+    ``data/brdf/brdf_drift_spectrum.csv`` already carries the exact columns the
+    ``figures.drift_spectrum`` builder expects (``product``, ``wavelength``,
+    ``gamma_pct_yr``, ``ci_{lo,hi}_pct_yr``, ``sig_raw``, ``unstable``), so no
+    adaptation is needed — unlike the matched-pairs variant below.
+    """
+    csv = paths.brdf_drift_spectrum()
+    if not csv.exists():
+        return None, f"{csv.name} not found — run scripts/run_brdf_drift_spectrum.py first."
+    return {"df": pd.read_csv(csv)}, csv.name
+
+
 def _load_mp_drift_spectrum(cfg):
     """Matched-pairs cross-PICS drift spectrum, adapted to the BRDF builder schema.
 
@@ -160,6 +174,9 @@ FIGURES = {
                      "build": figures.patch_coverage_single},
     "brdf_cos_sza": {"name": "solargeometry_rad_rfl", "load": _load_brdf_cos_sza,
                      "build": figures.brdf_cos_sza},
+    "brdf_drift_spectrum": {"name": "brdf_drift_spectrum",
+                            "load": _load_drift_spectrum,
+                            "build": figures.drift_spectrum},
     "mp_drift_spectrum": {"name": "matchedpairs_drift_spectrum",
                           "load": _load_mp_drift_spectrum,
                           "build": figures.drift_spectrum,

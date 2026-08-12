@@ -50,7 +50,7 @@ drift:
   alpha: 0.05            # per-channel significance level (uncorrected p-value)
   use_aggregated: true   # fit the option-A aggregated tables (vs raw per-patch)
   individual_channels: true
-  method: theilsen       # drift estimator: "theilsen" (median-collapse + Theil-Sen,
+  method: bootstrap      # drift estimator: "theilsen" (median-collapse + Theil-Sen,
                          # default) or "bootstrap" (one-use-per-scene matching bootstrap)
   n_bootstrap: 1000      # iterations when method == bootstrap
   seed: 0                # RNG seed for the matching bootstrap (reproducible)
