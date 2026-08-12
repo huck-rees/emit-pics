@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import matplotlib.patheffects as pe
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
@@ -20,7 +19,7 @@ from emit_pics.viz import style
 
 
 def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_raw",
-                   sig_label="significant (raw p < 0.05)",
+                   sig_label="significant (p < 0.05)",
                    ylim=(-2.5, 2.5), title="EMIT pooled radiometric drift spectrum"):
     """BRDF pooled drift spectrum gamma(lambda): rad (top) / rfl (bottom) vs wavelength.
 
@@ -88,193 +87,6 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_raw",
                    framealpha=0.8, edgecolor="0.7")
     if style.show_title():
         axes[0].set_title(title)
-    return fig
-
-
-def matched_pairs_geometry(pairs, *, site="Libya 4", patch="10_7_1",
-                           size="onehalf", aspect=0.62, sza_tol=None):
-    """Matched-pair geometry for one patch: acquisition date (x) vs in-patch SZA (y).
-
-    Reads the already-generated ``{site}_{patch}_matched_pairs.csv`` — one row per
-    *unordered* scene pair, so every scene appears in the ``t1_*``/``t2_*`` columns.
-    Each surviving scene is drawn once at ``(acquisition date, mean in-patch SZA)``;
-    a thin line links the two endpoints of every *matched* pair. Scenes that take
-    part in at least one match are filled in the accent colour, unmatched scenes are
-    open grey — so the reader sees both the geometry sampling and which acquisitions
-    have a same-geometry partner for the ΔR drift analysis.
-
-    Parameters
-    ----------
-    pairs : pandas.DataFrame
-        The matched-pairs table (``PAIR_CSV_COLS`` from ``id_matched_pairs``): needs
-        ``t1_scene_id/dt/SZA``, ``t2_scene_id/dt/SZA`` and the ``matched_pair`` flag.
-    site, patch : str
-        Labels for the (slide-only) title.
-    size : str
-        Width class resolved by the active theme (default ``onehalf``).
-    aspect : float
-        Height / width of the figure.
-    sza_tol : float or None
-        SZA matching tolerance (deg); shown in the slide title when given.
-    """
-    sc = style.scale()
-    accent = style.PRODUCT_STYLE["rad"]["color"]
-
-    # Recover the per-scene table from both halves of every pair row, then dedupe.
-    halves = [pairs[[f"{p}_scene_id", f"{p}_scene_dt", f"{p}_scene_SZA"]]
-              .set_axis(["scene_id", "dt", "sza"], axis=1) for p in ("t1", "t2")]
-    scenes = (pd.concat(halves, ignore_index=True)
-              .dropna(subset=["scene_id"])
-              .drop_duplicates(subset="scene_id"))
-    scenes["dt"] = pd.to_datetime(scenes["dt"])
-
-    matched = pairs[pairs["matched_pair"].astype(bool)].copy()
-    matched_ids = set(matched["t1_scene_id"]) | set(matched["t2_scene_id"])
-    scenes["in_pair"] = scenes["scene_id"].isin(matched_ids)
-
-    fig, ax = plt.subplots(figsize=style.figsize(size, aspect), layout="constrained")
-
-    # Matched-pair links first (behind the points).
-    for _, r in matched.iterrows():
-        ax.plot([pd.to_datetime(r["t1_scene_dt"]), pd.to_datetime(r["t2_scene_dt"])],
-                [r["t1_scene_SZA"], r["t2_scene_SZA"]],
-                color="0.6", lw=0.7 * sc, alpha=0.7, zorder=1)
-
-    iso, part = scenes[~scenes["in_pair"]], scenes[scenes["in_pair"]]
-    ax.scatter(iso["dt"], iso["sza"], s=14 * sc, marker="o", facecolors="none",
-               edgecolors=style.NS_EDGE, linewidths=0.6 * sc, zorder=3)
-    ax.scatter(part["dt"], part["sza"], s=16 * sc, marker="o", color=accent, zorder=4)
-
-    ax.set_ylabel("In-patch mean SZA (degrees)")
-    ax.set_xlabel("Acquisition date")
-    ax.xaxis.set_major_locator(mdates.YearLocator())
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-    ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=[1, 4, 7, 10]))
-
-    handles = [
-        Line2D([0], [0], marker="o", color=accent, ls="none", label="scene (matched)"),
-        Line2D([0], [0], marker="o", color=style.NS_EDGE, ls="none", mfc="none",
-               label="scene (unmatched)"),
-        Line2D([0], [0], color="0.6", lw=0.9 * sc, label="matched pair"),
-    ]
-    ax.legend(handles=handles, loc="best", frameon=True, framealpha=0.8, edgecolor="0.7")
-
-    if style.show_title():
-        tol = f" (|dSZA| <= {sza_tol:g} deg)" if sza_tol is not None else ""
-        ax.set_title(f"{site} {patch} - matched-pair geometry{tol}")
-    return fig
-
-
-#: Median % change column + human label per product (matches the drift analysis).
-_DELTA_COL = {"rad": "delta_rad_pct_median", "rfl": "delta_rfl_pct_median"}
-_PRODUCT_LABEL = {"rad": "Radiance (L1B)", "rfl": "Reflectance (L2A)"}
-
-
-def _draw_channel_fit(ax, stats, x, sc):
-    """Overlay the Theil-Sen line + monospace stats box for one channel/product.
-
-    *stats* is a row from the drift spectrum CSV (same values as the published
-    drift spectrum, so line and spectrum always agree); *x* bounds the line.
-    """
-    from emit_pics.matched_pairs_drift_analysis import DAYS_PER_YEAR
-    x = np.asarray(x, dtype=float)
-    slope = stats.get("slope_pct_yr", np.nan) if stats is not None else np.nan
-    n = int(stats.get("n", 0) or 0) if stats is not None else 0
-    if stats is not None and x.size and np.isfinite(slope):
-        xr = np.array([np.nanmin(x), np.nanmax(x)])
-        yline = stats["intercept_pct"] + (slope / DAYS_PER_YEAR) * xr
-        ax.plot(xr, yline, color="k", lw=1.4 * sc, zorder=5)
-        txt = (f"drift = {slope:+.3f} %/yr\n"
-               f"95% CI [{stats['ci_low_pct_yr']:+.2f}, {stats['ci_high_pct_yr']:+.2f}]\n"
-               f"intercept = {stats['intercept_pct']:+.2f} %\n"
-               f"Kendall p = {stats['p_value']:.2g}   n = {n}")
-        if pd.notna(stats.get("raw_significant", np.nan)):
-            txt += "\n" + ("significant (p < 0.05)" if bool(stats["raw_significant"])
-                           else "not significant")
-    else:
-        txt = f"no drift fit (n = {n})"
-    ax.text(0.03, 0.97, txt, transform=ax.transAxes, va="top", ha="left",
-            family="monospace", fontsize=7 * sc,
-            bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.85), zorder=6)
-
-
-def _channel_site_legend(ax, styles, sub, sc):
-    """PICS colour/shape legend + a mean-|SZA| marker-size reference."""
-    from emit_pics.matched_pairs_drift_analysis import sza_marker_size
-    handles = [Line2D([], [], color=styles[p]["color"], marker=styles[p]["marker"],
-                      ls="", markeredgecolor="k", markersize=7 * sc, label=str(p))
-               for p in sorted(sub["PICS_ID"].unique())]
-    handles.append(Line2D([], [], ls="", label=" "))          # spacer
-    for sza in (20, 40, 60):
-        handles.append(Line2D([], [], color="0.5", marker="o", ls="",
-                              markeredgecolor="k",
-                              markersize=np.sqrt(sza_marker_size(sza) * sc),
-                              label=f"SZA {sza}°"))
-    ax.legend(handles=handles, loc="best", frameon=True, framealpha=0.9,
-              edgecolor="0.7")
-
-
-def channel_drift(deltas, drift, *, product="rad", target_nm=1030.0,
-                  size="onehalf", aspect=0.78, stat_label="median", ylim=None):
-    """Single-product per-channel drift scatter: DeltaR (%) vs Delta-t (days).
-
-    Reproduces the pipeline's per-channel scatter (``plot_channel_scatter``) as a
-    one-product publication figure. The nearest non-absorption EMIT channel to
-    *target_nm* is chosen; every pooled matched pair is a marker coloured/shaped
-    by PICS (Wong palette via :func:`style.site_styles`) and sized by the pair's
-    mean ``|SZA|``. A dashed zero line marks no-change; the black Theil-Sen line
-    and the monospace stats box use the **precomputed** drift-spectrum values, so
-    they match the published spectrum exactly.
-
-    Parameters
-    ----------
-    deltas : pandas.DataFrame
-        Pooled delta table (``load_(aggregated_)delta_tables``): needs
-        ``PICS_ID, dt_days, band_index, wavelength, sza_size``, the
-        ``delta_{rad,rfl}_pct_median`` columns and ``absorption_band_flag``.
-    drift : pandas.DataFrame
-        The drift spectrum CSV (``paths.drift``) — precomputed per-channel stats.
-    product : str
-        ``"rad"`` or ``"rfl"`` — one product per figure.
-    target_nm : float
-        Target wavelength (nm); the nearest non-absorption channel is drawn.
-    size, aspect, ylim :
-        Theme width class, height/width, and optional shared y-limits (%).
-    """
-    from emit_pics.matched_pairs_drift_analysis import (
-        absorption_band_indices, sza_marker_size)
-    sc = style.scale()
-    dcol = _DELTA_COL[product]
-
-    # Nearest non-absorption channel to the target wavelength.
-    abs_bands = set(absorption_band_indices(deltas))
-    wl_by_band = (deltas[~deltas["band_index"].isin(abs_bands)]
-                  .groupby("band_index")["wavelength"].median())
-    band = int((wl_by_band - target_nm).abs().idxmin())
-    wl = float(wl_by_band.loc[band])
-    sub = deltas[deltas["band_index"] == band]
-    styles = style.site_styles(sub["PICS_ID"].unique())
-
-    fig, ax = plt.subplots(figsize=style.figsize(size, aspect), layout="constrained")
-    ax.axhline(0.0, color="gray", lw=0.8 * sc, ls="--", zorder=1)
-    for pics, g in sub.groupby("PICS_ID"):
-        st = styles[pics]
-        ax.scatter(g["dt_days"], g[dcol], s=sza_marker_size(g["sza_size"]) * sc,
-                   c=st["color"], marker=st["marker"], edgecolors="k",
-                   linewidths=0.4 * sc, alpha=0.85, zorder=3)
-
-    row = drift[(drift["product"] == product) & (drift["band_index"] == band)]
-    _draw_channel_fit(ax, row.iloc[0].to_dict() if not row.empty else None,
-                      sub["dt_days"].to_numpy(), sc)
-
-    ax.set_xlabel("Δt — days between pair")
-    ax.set_ylabel(f"ΔR — % change ({stat_label})")
-    if ylim is not None:
-        ax.set_ylim(*ylim)
-    _channel_site_legend(ax, styles, sub, sc)
-
-    if style.show_title():
-        ax.set_title(f"{_PRODUCT_LABEL[product]} — channel {band} ({wl:.1f} nm)")
     return fig
 
 
@@ -376,65 +188,98 @@ def brdf_cos_sza(design, *, site="Libya_4", fig_width=6.5, aspect=0.52,
     return fig
 
 
-def patch_coverage(patches, site, *, annotate="both", cmap="viridis_r",
-                   count_cols=(("n_gran_ovlp_rad", "L1B Radiance"),
-                               ("n_gran_ovlp_rfl", "L2A Reflectance")),
-                   panel_in=8.0, suptitle=None):
-    """One map per product: patches shaded by fully-covering granule count.
+def brdf_single_channel(joint, boots, T0, *, target_wl=None,
+                        size="double", aspect=0.74):
+    """Single-channel quasi-BRDF result: corrected collapse + pooled-γ bootstrap.
 
-    Faithful reproduction of the original coverage figure — a generously sized
-    grid (``panel_in`` inches per square panel) so every per-patch label stays
-    legible. Each panel shades the patches by that product's granule count
-    (``viridis_r``; darker = more), outlines the PICS boundary, carries its own
-    colourbar, and annotates every patch with its id and count. Reads the
-    already-generated ``patches_{site}_bnds.gpkg`` (geometry + ``n_gran_ovlp_*``
-    columns) and the PICS boundary — no Earthdata re-search.
+    A publication-ready recomposition of the two diagnostics the BRDF drift step
+    emits (``brdf_corrected_{wl}nm.png`` and ``brdf_bootstrap_{wl}nm.png``) into
+    one three-panel figure at the channel nearest ``brdf.target_wl``:
+
+    * **top row** — per-site *corrected* collapse for radiance (A) and reflectance
+      (B): each scene's ``rho`` divided by its own ``(alpha_s + beta_s cos theta)``
+      so every site falls onto the shared ``1 + gamma t`` line (drawn black); the
+      per-panel γ is printed bottom-left.
+    * **bottom** — the pooled shared-γ bootstrap histogram (rad + rfl overlaid),
+      with each product's point estimate and the zero line marked.
+
+    The fit inputs (``joint``, ``boots``) come precomputed from the runner's loader
+    (``emit_pics.brdf_drift`` on the pooled design table, fixed seeds — identical to
+    the BRDF step), so this builder stays a pure ``(data) -> Figure``.
 
     Parameters
     ----------
-    patches, site : geopandas.GeoDataFrame
-        Patch polygons (projected CRS, with ``patch_id`` + the count columns) and
-        the single-row PICS boundary (reprojected internally).
-    annotate : str
-        Per-cell label: ``"both"`` (id + count), ``"count"`` (count only), or
-        ``"none"``.
-    cmap : str
-        Colormap; ``viridis_r`` so darker = more granules (colour-blind-safe).
-    panel_in : float
-        Side length (inches) of each square panel — keep generous so labels read.
-    suptitle : str or None
-        Figure title; defaults to "<site> — patches by granule count (darker = more)".
+    joint : dict
+        ``{"rad": fit, "rfl": fit}`` from :func:`emit_pics.brdf_drift.fit_joint`;
+        each ``fit`` carries ``sites, alpha, beta, gamma, sidx, labels, g, t, rho``.
+    boots : dict
+        ``{"rad": b, "rfl": b}`` from :func:`emit_pics.brdf_drift.bootstrap_joint_gamma`;
+        each ``b`` carries the shared-γ ``draws`` array (fraction/yr).
+    T0 : pandas.Timestamp
+        Common time origin (earliest scene) — labels the corrected panels' x-axis.
+    target_wl : float or None
+        Target band (nm); shown in the slide-theme title only.
+    size : str
+        Width class resolved by the active theme (default ``double``).
+    aspect : float
+        Height / width of the whole figure.
     """
-    site_proj = site.to_crs(patches.crs)
-    n = len(count_cols)
-    fig, axes = plt.subplots(1, n, figsize=(panel_in * n, panel_in))
-    axes = np.atleast_1d(axes)
+    sc = style.scale()
+    all_sites = sorted(set(joint["rad"]["sites"]) | set(joint["rfl"]["sites"]))
+    styles = style.site_styles(all_sites)
 
-    for ax, (col, title) in zip(axes, count_cols):
-        gmap = patches.copy()
-        gmap["_n"] = gmap[col].fillna(0).astype(int)
+    fig, axd = plt.subplot_mosaic([["rad", "rfl"], ["boot", "boot"]],
+                                  figsize=style.figsize(size, aspect),
+                                  layout="constrained")
 
-        site_proj.boundary.plot(ax=ax, color="black", linewidth=1.6, zorder=3)
-        gmap.plot(ax=ax, column="_n", cmap=cmap, edgecolor="white", linewidth=0.5,
-                  legend=True, legend_kwds={"label": f"{title} granules", "shrink": 0.7})
+    # Top row: per-site corrected collapse onto the shared drift line.
+    for key in ("rad", "rfl"):
+        ax = axd[key]
+        r = joint[key]
+        a = r["alpha"][r["sidx"]]
+        b = r["beta"][r["sidx"]]
+        corrected = r["rho"] / (a + b * r["g"])
+        for s in r["sites"]:
+            m = r["labels"] == s
+            st = styles[s]
+            ax.scatter(r["t"][m], corrected[m], s=16 * sc, color=st["color"],
+                       marker=st["marker"], edgecolors="k", linewidths=0.3 * sc,
+                       alpha=0.85, zorder=3)
+        tg = np.linspace(float(r["t"].min()), float(r["t"].max()), 60)
+        ax.plot(tg, 1 + r["gamma"] * tg, color="k", lw=1.6 * sc, zorder=4,
+                label=f"$1+\\gamma t$ ({100 * r['gamma']:+.3f} %/yr)")
+        ax.axhline(1.0, color="k", lw=0.6 * sc, ls=":", zorder=2)
+        ax.text(0.03, 0.05, f"$\\gamma$ = {100 * r['gamma']:+.3f} %/yr",
+                transform=ax.transAxes, va="bottom", ha="left", fontsize=7 * sc,
+                family="monospace", zorder=6,
+                bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9))
+        ax.set_xlabel(f"t (yr since {T0.date()})")
+        ax.set_title(f"{key.upper()} — corrected")
+    axd["rad"].set_ylabel(r"$\rho\,/\,(\alpha_s + \beta_s\,\cos\theta)$")
 
-        if annotate != "none":
-            for _, prow in gmap.iterrows():
-                cpt = prow.geometry.centroid
-                lbl = (f"{prow['patch_id']}\n{prow['_n']}" if annotate == "both"
-                       else str(prow["_n"]))
-                ax.annotate(lbl, (cpt.x, cpt.y), ha="center", va="center",
-                            fontsize=7, color="white", fontweight="bold", zorder=5)
+    # One shared PICS colour/marker legend, in the radiance panel.
+    site_handles = [Line2D([], [], marker=styles[s]["marker"], color=styles[s]["color"],
+                           ls="", markeredgecolor="k", markersize=5 * sc,
+                           label=str(s).replace("_", " ")) for s in all_sites]
+    axd["rad"].legend(handles=site_handles, loc="upper right", ncol=1,
+                      fontsize=6.5 * sc, frameon=True, framealpha=0.9, edgecolor="0.7")
 
-        ax.set_title(f"{title} — fully-covering scenes per patch", fontsize=11)
-        ax.set_xticks([]); ax.set_yticks([])
-        ax.set_aspect("equal")
+    # Bottom row: pooled shared-γ bootstrap, both products overlaid.
+    axb = axd["boot"]
+    for p in ("rad", "rfl"):
+        pc = style.PRODUCT_STYLE[p]
+        axb.hist(100 * boots[p]["draws"], bins=40, color=pc["color"], alpha=0.55,
+                 label=p.upper())
+        axb.axvline(100 * joint[p]["gamma"], color=pc["color"], lw=1.4 * sc, zorder=4)
+    axb.axvline(0.0, color="k", lw=0.8 * sc, ls="--", zorder=3)
+    axb.set_xlabel("Shared drift γ (%/yr)")
+    axb.set_ylabel("Bootstrap count")
+    axb.legend(loc="upper right", frameon=True, framealpha=0.9, edgecolor="0.7")
 
-    if suptitle is None:
-        nm = str(site.iloc[0]["site_name"]) if "site_name" in site.columns else "PICS"
-        suptitle = f"{nm} — patches by granule count (darker = more)"
-    fig.suptitle(suptitle, fontsize=13, fontweight="bold")
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    if style.show_title():
+        band = f" — band ≈ {target_wl:.0f} nm" if target_wl else ""
+        fig.suptitle(f"Quasi-BRDF corrected collapse & pooled-γ bootstrap{band}",
+                     fontsize=12 * sc, fontweight="bold")
     return fig
 
 
