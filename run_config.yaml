@@ -45,23 +45,11 @@ radiometry:
   # corrected run (earth_sun_normalize:true) is ALWAYS the flat canonical layout.
   # variant_label: no_earthsun   # subfolder name for the uncorrected run
 
-# --- cross-PICS drift analysis ---
+# --- cross-PICS drift analysis (matched-pairs bootstrap) ---
 drift:
-  alpha: 0.05            # per-channel significance level (uncorrected p-value)
-  use_aggregated: true   # fit the option-A aggregated tables (vs raw per-patch)
-  individual_channels: true
-  method: bootstrap      # drift estimator: "theilsen" (median-collapse + Theil-Sen,
-                         # default) or "bootstrap" (one-use-per-scene matching bootstrap)
-  n_bootstrap: 1000      # iterations when method == bootstrap
-  seed: 0                # RNG seed for the matching bootstrap (reproducible)
-  # One representative patch per PICS for the ORIGINAL cross-PICS pool used by the
-  # publication per-channel figure. Only needed to disambiguate a PICS whose
-  # per_patch/ folder also holds the parallel all-patches experiment's tables
-  # (a PICS with a single patch is picked automatically). The configured `site`
-  # is pinned to `patch` above automatically.
-  # cross_pics_patches:
-  #   Libya_4: "10_7_1"
-  #   Algeria_3: "10_3_2"
+  alpha: 0.05            # per-channel significance level (uncorrected bootstrap p-value)
+  n_bootstrap: 1000      # matched-pairs bootstrap iterations
+  seed: 0                # RNG seed for the bootstrap (reproducible resampling)
 
 # --- BRDF / quasi-BRDF pooled multi-site drift ---
 # Pooled multi-site drift: every PICS contributes ONE representative patch (one

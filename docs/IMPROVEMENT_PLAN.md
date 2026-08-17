@@ -22,7 +22,7 @@
 | Module | Function | Known-answer test |
 |---|---|---|
 | `delta_calculations` | `_pct_change`, `absorption_band_flag`, `compute_pair_delta` | % formula incl. near-zero denominator; **band-order join + ±3 nm wavelength-drift tolerance**; grid-mismatch → empty frame |
-| `matched_pairs_drift_analysis` | `fit_channel_drift`, `median_ratio_slope`, `compute_drift_spectrum` | Theil–Sen slope on a line of known slope; <3-point guard; origin-forced (median-of-ratios) recovery + intercept-bias diagnostic |
+| `matched_pairs_bootstrap` | `point_slope`, `resample_slope`, `bootstrap_channel`, `compute_bootstrap_drift_spectrum` | Theil–Sen point estimate recovers a known slope; PICS-stratified with-replacement resample; CI brackets truth and is wider than a patch-draw-only scheme; <3-point guard; seed-reproducible |
 | `id_matched_pairs` | `find_matched_pairs`, `in_patch_mask`, `acq_timestamp` | 3 scenes with set SZA/VZA → known matched flags; point in/out of polygon |
 | `PICS_allpatches_aggregate_pairs` | `aggregate_by_pair`, `collapse_summary` | 2 patches, same acquisition pair → single median row, `n_patches=2` |
 | `qc_gate` | `apply_qc_filter`, `_keep` | `keep=FALSE` row dropped; unreviewed sheet raises `QCReviewRequired` |
@@ -48,7 +48,7 @@
   matching: {sza_tol: 2.0, vza_tol: 5.0}
   qc: {require_review: true}
   spectra: {stat: median}
-  drift: {alpha: 0.05, use_aggregated: true, individual_channels: true}
+  drift: {alpha: 0.05, n_bootstrap: 1000, seed: 0}
   extract: {cache_pixels: true, want_obs: true, filter_agg_flag: false, min_valid_frac: 0.60}
   granule_search: {date_start: "2022-08-01", date_end: "2026-06-30", patch_size_km: 10}
   patch_gen: {min_patch_km: 10, increment_km: 10}

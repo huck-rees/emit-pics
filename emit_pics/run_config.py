@@ -54,21 +54,12 @@ class RunConfig:
     #: correction OFF nests deltas/drift/BRDF under this subfolder so an
     #: uncorrected comparison run never overwrites the corrected baseline.
     output_variant: str = ""
-    # --- drift analysis ---
+    # --- drift analysis (matched-pairs bootstrap) ---
     alpha: float = 0.05
-    use_aggregated: bool = True
-    individual_channels: bool = True
-    #: Drift estimator: "theilsen" (median-collapse + Theil-Sen, default) or
-    #: "bootstrap" (one-use-per-scene matching bootstrap over per-patch tables).
-    drift_method: str = "theilsen"
-    #: Matching-bootstrap iterations (drift_method == "bootstrap").
+    #: Matched-pairs bootstrap iterations.
     drift_n_bootstrap: int = 1000
-    #: RNG seed for the matching bootstrap (reproducible resampling).
+    #: RNG seed for the bootstrap (reproducible resampling).
     drift_seed: int = 0
-    #: {PICS_ID: patch_id} — one representative patch per PICS for the original
-    #: cross-PICS pool (publication per-channel figure); disambiguates PICS whose
-    #: per_patch/ folder also holds the parallel all-patches experiment's tables.
-    drift_cross_pics_patches: dict = field(default_factory=dict)
     # --- BRDF / quasi-BRDF pooled multi-site drift ---
     # (shares the global drift.alpha and qc.require_review knobs)
     brdf_site_patches: dict = field(default_factory=dict)
@@ -161,14 +152,8 @@ def load_config(path=None) -> RunConfig:
         e0_method=str(radiometry.get("e0_method", "table")),
         output_variant=output_variant,
         alpha=float(drift.get("alpha", 0.05)),
-        use_aggregated=bool(drift.get("use_aggregated", True)),
-        individual_channels=bool(drift.get("individual_channels", True)),
-        drift_method=str(drift.get("method", "theilsen")),
         drift_n_bootstrap=int(drift.get("n_bootstrap", 1000)),
         drift_seed=int(drift.get("seed", 0)),
-        drift_cross_pics_patches={str(s): str(p) for s, p
-                                  in (drift.get("cross_pics_patches") or {}).items()
-                                  if p not in (None, "")},
         brdf_site_patches=brdf_site_patches,
         brdf_exclude_sites=brdf_exclude_sites,
         brdf_label=str(brdf.get("label", "") or ""),

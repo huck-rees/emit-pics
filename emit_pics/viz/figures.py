@@ -90,6 +90,214 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_raw",
     return fig
 
 
+def patch_size_drift_spectrum(cmp, *, window=11, tag10="10km", tag20="20km",
+                              size="double", aspect=0.62, ylim=(-3.0, 3.0),
+                              colors=None):
+    """Publication 10 km vs 20 km BRDF drift-spectrum comparison (rad top / rfl bottom).
+
+    Reads the per-channel comparison table from
+    ``data/20_km_patch_sensitivity/drift_spectrum_comparison.csv`` (written by
+    ``scripts/run_patch_size_sensitivity.py``). This is the ordinary pooled
+    :func:`drift_spectrum` rendered for two configurations at once, with the
+    dot-and-whisker markers turned into a **line** (the per-channel drift fit
+    ``gamma_pct_yr`` — the original least-squares point estimate, identical to the
+    primary figure's markers, only smoothed across wavelength by a rolling median
+    for legibility) and a semi-transparent 95 % CI **band** (the bootstrap
+    percentile CI, likewise smoothed), one colour per size. The central line is
+    NOT a bootstrap median. **No title** is drawn; the y-axis is fixed to *ylim*.
+
+    The excluded water-vapor channels are already absent from the source drift
+    spectrum (they are simply not fit), so they appear as wide gaps in the ~7 nm
+    grid. The series is split at those gaps (:func:`patch_size_sensitivity.
+    spectrum_segments`) and each contiguous run is smoothed and drawn on its own,
+    so the line and CI band break exactly where channels are missing — the data's
+    own missingness is the exclusion window; nothing is shaded or hand-set.
+
+    Parameters
+    ----------
+    cmp : pandas.DataFrame
+        The comparison table: needs ``product``, ``wavelength`` and, per config,
+        ``gamma_pct_yr_<tag>``, ``ci_{lo,hi}_pct_yr_<tag>``, ``unstable_<tag>``.
+    window : int
+        Rolling-median smoothing window (channels); matches the diagnostic figure.
+    tag10, tag20 : str
+        Column suffixes / legend labels of the two configs (``"10km"``/``"20km"``).
+    size, aspect : str, float
+        Theme width class and height/width.
+    ylim : tuple or None
+        Fixed y-limits (%/yr) for both panels (default +/-3).
+    colors : dict or None
+        ``{tag: colour}`` override; defaults to Wong blue (10 km) / orange (20 km).
+    """
+    from emit_pics.patch_size_sensitivity import smooth_series, spectrum_segments
+    sc = style.scale()
+    colors = colors or {tag10: "#0072B2", tag20: "#E69F00"}
+
+    fig, axes = plt.subplots(2, 1, figsize=style.figsize(size, aspect),
+                             sharex=True, layout="constrained")
+    for ax, prod, ylab in zip(
+            axes, ("rad", "rfl"),
+            ("Radiance drift (%/yr)", "Reflectance drift (%/yr)")):
+        d = cmp[cmp["product"] == prod].sort_values("wavelength")
+        wl = d["wavelength"].to_numpy(float)
+        segs = spectrum_segments(wl)   # break at the omitted water-vapor gaps
+        for tag in (tag10, tag20):
+            c = colors[tag]
+            ok = ~d[f"unstable_{tag}"].to_numpy(bool)
+            gam = np.where(ok, d[f"gamma_pct_yr_{tag}"], np.nan)
+            lo_ = np.where(ok, d[f"ci_lo_pct_yr_{tag}"], np.nan)
+            hi_ = np.where(ok, d[f"ci_hi_pct_yr_{tag}"], np.nan)
+            labeled = False
+            # Smooth and draw each contiguous run separately so neither the line
+            # nor the CI band bridges a missing (absorption) region.
+            for sl in segs:
+                w = wl[sl]
+                gs = smooth_series(w, gam[sl], window=window)
+                ls = smooth_series(w, lo_[sl], window=window)
+                hs = smooth_series(w, hi_[sl], window=window)
+                ax.fill_between(w, ls, hs, color=c, alpha=0.22, linewidth=0, zorder=2)
+                ax.plot(w, gs, color=c, lw=1.4 * sc, alpha=0.95, zorder=3,
+                        label=(None if labeled else
+                               f"{tag.replace('km', ' km')} (drift fit + 95% CI)"))
+                labeled = True
+        ax.axhline(0.0, color="k", lw=0.6 * sc, zorder=1)
+        ax.set_ylabel(ylab)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
+
+    axes[1].set_xlabel("Wavelength (nm)")
+    axes[0].legend(loc="upper left", frameon=True, framealpha=0.85, edgecolor="0.7")
+    return fig
+
+
+#: Line styles cycled with the site colours so the 5 PICS stay distinguishable in
+#: greyscale / colour-blind viewing (redundant encoding, per the RSE spec).
+_SPECTRA_LS = ["-", "--", "-.", (0, (1, 1)), (0, (3, 1, 1, 1))]
+
+
+def brdf_site_mean_spectra(spectra, *, size="double", aspect=0.9,
+                           rad_label="Mean radiance (µW/cm²/sr/nm)",
+                           rfl_label="Mean reflectance (unitless)",
+                           title="Mean EMIT spectra by PICS (10 km BRDF patch)"):
+    """Two-panel mean rad (top) / rfl (bottom) spectra, one line per PICS.
+
+    Reads the assembled per-site mean spectra from
+    :func:`emit_pics.brdf_drift.site_mean_spectra`: ``{pics_id: {"wl", "mean_rad",
+    "mean_rfl", "n", "patch"}}``. Each PICS is a single line — the mean over that
+    representative patch's QC-surviving scenes — drawn in its stable Wong colour
+    (:func:`style.site_styles`) plus a cycled line style for greyscale safety.
+    Radiance is continuous; reflectance breaks across the deep water-vapor bands
+    (NaN where L2A is fill). The legend carries each PICS's scene count ``n``.
+
+    Parameters
+    ----------
+    spectra : dict
+        ``{pics_id: {"wl", "mean_rad", "mean_rfl": array, "n": int, "patch": str}}``.
+    size, aspect : str, float
+        Theme width class and height/width (taller default for two stacked panels).
+    rad_label, rfl_label : str
+        Y-axis labels for the two panels.
+    title : str
+        On-figure title (slide theme only; the manuscript caption is in LaTeX).
+    """
+    from emit_pics.delta_calculations import ABSORPTION_BANDS_NM
+    sc = style.scale()
+    sites = sorted(spectra)
+    styles = style.site_styles(sites)
+
+    fig, axes = plt.subplots(2, 1, figsize=style.figsize(size, aspect),
+                             sharex=True, layout="constrained")
+    for ax, key, ylab in zip(axes, ("mean_rad", "mean_rfl"), (rad_label, rfl_label)):
+        for i, s in enumerate(sites):
+            d = spectra[s]
+            y = np.asarray(d[key], float).copy()
+            # Reflectance retrieval is fill/unreliable in the deep water-vapor
+            # windows (nonphysical band-edge spikes), so break the reflectance line
+            # across the SAME canonical bands the drift analyses exclude. Radiance
+            # is physical everywhere and is left continuous.
+            if key == "mean_rfl":
+                wl = np.asarray(d["wl"], float)
+                for lo, hi in ABSORPTION_BANDS_NM:
+                    y[(wl >= lo) & (wl <= hi)] = np.nan
+            ax.plot(d["wl"], y, color=styles[s]["color"],
+                    ls=_SPECTRA_LS[i % len(_SPECTRA_LS)], lw=1.0 * sc, alpha=0.9)
+        ax.set_ylabel(ylab)
+        ax.margins(x=0.01)
+
+    axes[1].set_xlabel("Wavelength (nm)")
+    handles = [Line2D([0], [0], color=styles[s]["color"],
+                      ls=_SPECTRA_LS[i % len(_SPECTRA_LS)], lw=1.3 * sc,
+                      label=f"{s.replace('_', ' ')} (n = {spectra[s]['n']})")
+               for i, s in enumerate(sites)]
+    axes[0].legend(handles=handles, loc="upper right", frameon=True,
+                   framealpha=0.85, edgecolor="0.7")
+    if style.show_title():
+        axes[0].set_title(title)
+    return fig
+
+
+def persite_gamma_spectrum(persite_spec, *, size="double", aspect=0.75, ylim=None,
+                           rad_ylab="Radiance per-site drift (%/yr)",
+                           rfl_ylab="Reflectance per-site drift (%/yr)",
+                           title="Per-site standalone drift spectrum"):
+    """Per-site standalone ``gamma(lambda)`` as points — one marker per PICS per channel.
+
+    Reads the tidy per-site gamma spectrum from
+    :func:`emit_pics.brdf_drift.persite_gamma_spectrum` (columns ``product``,
+    ``site``, ``wavelength``, ``gamma_pct_yr``). Each PICS is drawn as **point
+    markers only** (no connecting line), so nothing interpolates across the excluded
+    water-vapor bands — those channels simply have no points. Colour **and** marker
+    encode the PICS (redundant, greyscale/colour-blind safe). Radiance (top) /
+    reflectance (bottom) share **one** legend; no on-figure title in the manuscript
+    theme (the caption is in LaTeX).
+
+    Parameters
+    ----------
+    persite_spec : pandas.DataFrame
+        Long per-site gamma spectrum (``product``, ``site``, ``wavelength``,
+        ``gamma_pct_yr``); degenerate fits should already be NaN.
+    size, aspect : str, float
+        Theme width class and height/width.
+    ylim : tuple or None
+        Fixed y-limits (%/yr) for both panels; ``None`` uses a robust 1–99
+        percentile window per panel so a few SWIR outliers don't swamp the scale.
+    """
+    sc = style.scale()
+    sites = sorted(persite_spec["site"].unique())
+    styles = style.site_styles(sites)
+
+    fig, axes = plt.subplots(2, 1, figsize=style.figsize(size, aspect),
+                             sharex=True, layout="constrained")
+    for ax, prod, ylab in zip(axes, ("rad", "rfl"), (rad_ylab, rfl_ylab)):
+        d = persite_spec[persite_spec["product"] == prod]
+        for s in sites:
+            ds = d[d["site"] == s]
+            ax.scatter(ds["wavelength"], ds["gamma_pct_yr"], s=8 * sc,
+                       marker=styles[s]["marker"], color=styles[s]["color"],
+                       edgecolors="none", alpha=0.8, zorder=3)
+        ax.axhline(0.0, color="k", lw=0.6 * sc, zorder=2)
+        ax.set_ylabel(ylab)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
+        else:
+            v = d["gamma_pct_yr"].to_numpy(float)
+            if np.isfinite(v).any():
+                lo, hi = np.nanpercentile(v, [1, 99])
+                pad = 0.05 * (hi - lo) if hi > lo else 1.0
+                ax.set_ylim(lo - pad, hi + pad)
+
+    axes[1].set_xlabel("Wavelength (nm)")
+    handles = [Line2D([0], [0], marker=styles[s]["marker"], ls="none",
+                      color=styles[s]["color"], markersize=5 * sc,
+                      label=s.replace("_", " ")) for s in sites]
+    axes[0].legend(handles=handles, loc="upper left", frameon=True,
+                   framealpha=0.85, edgecolor="0.7", ncol=len(sites),
+                   columnspacing=1.0, handletextpad=0.3)
+    if style.show_title():
+        axes[0].set_title(title)
+    return fig
+
+
 def _norm_site(s):
     """Normalize a site id for matching (case/space/underscore-insensitive)."""
     return str(s).strip().lower().replace(" ", "_")
@@ -552,6 +760,100 @@ def africa_locator(sites_gdf, *, panel_in=3.0, africa_extent=(-20, -37, 55, 40),
     ax.axis("off")
     if style.show_title():
         ax.set_title(suptitle or "Africa", fontsize=11 * sc, fontweight="bold")
+    return fig
+
+
+def _grid_on_ax(ax, patches, boundary, valcol, norm, cmap, sc):
+    """Draw one PICS's patch grid (coloured by *valcol*) + boundary onto *ax*."""
+    site_proj = boundary.to_crs(patches.crs)
+    patches.plot(ax=ax, column=valcol, cmap=cmap, norm=norm, edgecolor="white",
+                 linewidth=0.15 * sc, legend=False, zorder=2)
+    site_proj.boundary.plot(ax=ax, color="black", linewidth=0.6 * sc, zorder=3)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+
+def study_overview_grid(sites_data, *, fig_w=6.5, fig_h=7.8,
+                        cov_cmap="viridis_r", pair_cmap="magma_r",
+                        headers=("Total scenes", "Matched pairs", "BRDF time series")):
+    """5-PICS × 3-panel early-results overview (one row per PICS).
+
+    Column 1 = per-patch scene-coverage grid (L2A), column 2 = the same grid coloured
+    by matched-pairs-per-patch (with per-PICS total Σ and unique-pair counts beneath),
+    column 3 = a shared-timeline stem plot of the QC-reviewed BRDF scene dates. PICS
+    names are rotated on the left; a shared colour scale spans each grid column.
+
+    Parameters
+    ----------
+    sites_data : list of dict
+        One per PICS, in display order, each with: ``name`` (str), ``patches``
+        (GeoDataFrame carrying int ``_cov`` and ``_pairs`` columns), ``boundary``
+        (GeoDataFrame), ``dates`` (datetime array), ``total_pairs`` / ``unique_pairs``
+        (int), and ``n_brdf`` (int).
+    fig_w, fig_h : float
+        Figure size in inches (RSE: ≤6.5 wide, ≤8 tall).
+    """
+    import matplotlib.dates as mdates
+    from matplotlib.gridspec import GridSpec
+    sc = style.scale()
+    n = len(sites_data)
+
+    cov_max = max(1, max(int(s["patches"]["_cov"].max()) for s in sites_data))
+    pair_max = max(1, max(int(s["patches"]["_pairs"].max()) for s in sites_data))
+    cov_norm = mpl.colors.Normalize(0, cov_max)
+    pair_norm = mpl.colors.Normalize(0, pair_max)
+    d0 = min(pd.Timestamp(s["dates"].min()) for s in sites_data)
+    d1 = max(pd.Timestamp(s["dates"].max()) for s in sites_data)
+    pad = (d1 - d0) * 0.03
+    d0, d1 = d0 - pad, d1 + pad
+
+    fig = plt.figure(figsize=(fig_w, fig_h))
+    gs = GridSpec(n, 3, figure=fig, left=0.075, right=0.995, top=0.935, bottom=0.10,
+                  wspace=0.14, hspace=0.30)
+
+    axes = [[fig.add_subplot(gs[i, j]) for j in range(3)] for i in range(n)]
+    for i, s in enumerate(sites_data):
+        ax_cov, ax_pair, ax_ts = axes[i]
+        _grid_on_ax(ax_cov, s["patches"], s["boundary"], "_cov", cov_norm, cov_cmap, sc)
+        _grid_on_ax(ax_pair, s["patches"], s["boundary"], "_pairs", pair_norm, pair_cmap, sc)
+        # per-PICS pair totals under the matched-pairs grid
+        ax_pair.text(0.5, -0.02, f"total {s['total_pairs']}   unique {s['unique_pairs']}",
+                     transform=ax_pair.transAxes, ha="center", va="top",
+                     fontsize=6.2 * sc)
+        # BRDF scene stem plot on the shared timeline
+        dates = pd.to_datetime(s["dates"])
+        ax_ts.vlines(dates, 0, 1, color="#0072B2", linewidth=0.8 * sc)
+        ax_ts.set_xlim(d0, d1); ax_ts.set_ylim(0, 1.15)
+        ax_ts.set_yticks([])
+        for sp in ("left", "right", "top"):
+            ax_ts.spines[sp].set_visible(False)
+        ax_ts.text(0.985, 0.98, f"n={s['n_brdf']}", transform=ax_ts.transAxes,
+                   ha="right", va="top", fontsize=6.2 * sc, color="0.35")
+        if i == n - 1:
+            ax_ts.xaxis.set_major_locator(mdates.YearLocator())
+            ax_ts.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+            ax_ts.tick_params(axis="x", labelsize=6.5 * sc, length=2 * sc)
+        else:
+            ax_ts.set_xticks([])
+        # rotated PICS name to the left of the row
+        ax_cov.annotate(s["name"], xy=(-0.12, 0.5), xycoords="axes fraction",
+                        rotation=90, ha="center", va="center",
+                        fontsize=8 * sc, fontweight="bold")
+
+    # column headers (over the top row)
+    for j, h in enumerate(headers):
+        axes[0][j].set_title(h, fontsize=8.5 * sc, fontweight="bold", pad=4 * sc)
+
+    # one shared horizontal colourbar under each grid column
+    for j, (norm, cmap, lab) in enumerate([
+            (cov_norm, cov_cmap, "scenes / patch (L2A coverage)"),
+            (pair_norm, pair_cmap, "matched pairs / patch")]):
+        p = axes[-1][j].get_position()
+        cax = fig.add_axes([p.x0, 0.045, p.width, 0.012])
+        cb = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax,
+                          orientation="horizontal")
+        cb.set_label(lab, fontsize=6.3 * sc)
+        cb.ax.tick_params(labelsize=6 * sc, length=2 * sc)
     return fig
 
 

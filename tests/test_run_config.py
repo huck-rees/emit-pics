@@ -12,7 +12,7 @@ def test_load_config_reads_values_and_fills_defaults(tmp_path):
         'patch: "10_7_1"\n'
         'patch_size: "10"\n'
         "matching: {sza_tol: 3.0, vza_tol: 4.0, min_pair_days: 90}\n"
-        "drift: {alpha: 0.1, use_aggregated: false, method: bootstrap, n_bootstrap: 200, seed: 7}\n",
+        "drift: {alpha: 0.1, n_bootstrap: 200, seed: 7}\n",
         encoding="utf-8",
     )
     cfg = load_config(p)
@@ -25,8 +25,6 @@ def test_load_config_reads_values_and_fills_defaults(tmp_path):
     assert cfg.vza_tol == 4.0
     assert cfg.min_pair_days == 90.0
     assert cfg.alpha == 0.1
-    assert cfg.use_aggregated is False
-    assert cfg.drift_method == "bootstrap"
     assert cfg.drift_n_bootstrap == 200
     assert cfg.drift_seed == 7
 
@@ -81,7 +79,6 @@ def test_matching_and_drift_defaults(tmp_path):
     p.write_text("site: Libya_4\npatch: '10_7_1'\npatch_size: '10'\n", encoding="utf-8")
     cfg = load_config(p)
     assert cfg.min_pair_days == 0.0            # off by default (backward compatible)
-    assert cfg.drift_method == "theilsen"      # Theil-Sen path stays the default
     assert cfg.drift_n_bootstrap == 1000
     assert cfg.drift_seed == 0
 

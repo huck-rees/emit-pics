@@ -1,13 +1,15 @@
-"""Unit tests for the one-use-per-scene matching-bootstrap drift estimator."""
+"""Unit tests for the PICS-stratified matched-pairs bootstrap drift estimator."""
 
 import numpy as np
 import pandas as pd
 import pytest
+from scipy.stats import theilslopes
 
 from emit_pics.matched_pairs_drift_analysis import DAYS_PER_YEAR
 from emit_pics.matched_pairs_bootstrap import (
     build_edges,
-    random_matching,
+    point_slope,
+    resample_slope,
     bootstrap_channel,
     compute_bootstrap_drift_spectrum,
 )
@@ -60,15 +62,40 @@ def test_build_edges_groups_within_pics():
             assert e["u"].startswith(pics) and e["v"].startswith(pics)
 
 
-# ------------------------------------------------------------------ matching
-def test_random_matching_is_scene_disjoint():
-    edges = build_edges(_band_df(n_scenes=12), "delta_rad_pct_median")["Libya_4"]
+# ------------------------------------------------------------- point estimate
+def test_point_slope_recovers_known_slope():
+    slope = -0.01                                        # per day
+    df = _band_df(slope_per_day=slope, n_scenes=14, n_patches=6, seed=1)
+    edges = build_edges(df, "delta_rad_pct_median")
+    per_day, n = point_slope(edges)
+    assert n == 91                                       # 14 scenes -> C(14,2) edges
+    assert abs(per_day - slope) < abs(slope) * 0.2
+
+
+def test_point_estimate_is_rng_independent():
+    df = _band_df(n_scenes=10, seed=2)
+    edges = build_edges(df, "delta_rad_pct_median")
+    a = bootstrap_channel(edges, 50, np.random.default_rng(1))
+    b = bootstrap_channel(edges, 50, np.random.default_rng(999))
+    # The point estimate is computed on the observed data, so it must not depend
+    # on the bootstrap RNG (only the CI does).
+    assert a["slope_pct_yr"] == b["slope_pct_yr"]
+
+
+# ------------------------------------------------------------------ resampling
+def test_resample_is_pics_stratified_with_replacement():
+    df = pd.concat([_band_df(pics="Libya_4", n_scenes=4, seed=1),     # 6 edges
+                    _band_df(pics="Algeria_3", n_scenes=5, seed=2)],  # 10 edges
+                   ignore_index=True)
+    edges = build_edges(df, "delta_rad_pct_median")
+    n_edges = sum(len(e) for e in edges.values())
+    assert n_edges == 16
+    # Each draw pools exactly one point per resampled edge, and the per-PICS counts
+    # are preserved (stratified) -> total points == total edges, every iteration.
     rng = np.random.default_rng(0)
-    for _ in range(20):                                  # every draw must be disjoint
-        chosen = random_matching(edges, rng)
-        used = [s for e in chosen for s in (e["u"], e["v"])]
-        assert len(used) == len(set(used))               # no scene reused
-        assert len(chosen) >= 1
+    for _ in range(25):
+        _, n = resample_slope(edges, rng)
+        assert n == n_edges
 
 
 # ------------------------------------------------------------------ bootstrap
@@ -83,8 +110,36 @@ def test_bootstrap_recovers_known_slope_with_bracketing_ci():
     assert fit["ci_low_pct_yr"] < fit["slope_pct_yr"] < fit["ci_high_pct_yr"]
     assert fit["raw_significant"] is True                # strong signal, CI excludes 0
     assert fit["n_scenes"] == 14
-    # one-use-per-scene: pooled pairs per iteration cannot exceed floor(scenes/2).
-    assert fit["n_pairs"] <= fit["n_scenes"] / 2 + 1e-9
+    assert fit["n_edges"] == 91                          # all pairs used every fit
+    assert "n_pairs" not in fit                          # retired diagnostic
+
+
+def test_bootstrap_ci_reflects_pair_resampling_not_just_patch_draw():
+    """The CI must come from resampling pairs, not only the patch draw.
+
+    A scheme that keeps every edge fixed and only varies the patch draw understates
+    uncertainty; the real bootstrap (edge resample + patch draw) must be wider.
+    """
+    df = _band_df(slope_per_day=-0.01, n_scenes=12, n_patches=6, noise=0.3, seed=7)
+    edges = build_edges(df, "delta_rad_pct_median")
+
+    fit = bootstrap_channel(edges, 600, np.random.default_rng(0))
+    boot_width = fit["ci_high_pct_yr"] - fit["ci_low_pct_yr"]
+
+    # Patch-draw-only pseudo-CI: fixed edge set, only the patch draw varies.
+    rng = np.random.default_rng(0)
+    slopes = []
+    for _ in range(600):
+        xs, ys = [], []
+        for elist in edges.values():
+            for e in elist:
+                xs.append(e["dt"])
+                ys.append(e["dR"][rng.integers(e["dR"].size)])
+        slopes.append(theilslopes(np.array(ys), np.array(xs))[0])
+    s = np.array(slopes) * DAYS_PER_YEAR
+    patch_only_width = np.percentile(s, 97.5) - np.percentile(s, 2.5)
+
+    assert boot_width > patch_only_width
 
 
 def test_bootstrap_too_few_pairs_returns_nan():
@@ -106,6 +161,8 @@ def test_compute_spectrum_excludes_absorption_and_exposes_plot_columns():
     # columns plot_drift_spectrum reads must all be present
     assert {"wavelength", "slope_pct_yr", "ci_low_pct_yr", "ci_high_pct_yr",
             "raw_significant", "absorption_band", "p_value"} <= set(spec.columns)
+    assert {"n_scenes", "n_edges", "n_boot"} <= set(spec.columns)
+    assert "n_pairs" not in spec.columns
     row_abs = spec[spec["band_index"] == 1].iloc[0]
     assert bool(row_abs["absorption_band"]) is True
     assert np.isnan(row_abs["slope_pct_yr"])             # absorption band excluded

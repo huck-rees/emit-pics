@@ -64,7 +64,7 @@ Add `--dry-run` to any stage to print the exact steps it would run without execu
 | `matching` | `sza_tol`, `vza_tol` | Matched-pair tolerances (degrees) on \|ΔSZA\| and \|ΔVZA\|. |
 | `qc` | `require_review` | If true, downstream steps refuse to run until the QC worksheet is reviewed. |
 | `spectra` | `stat` | In-patch statistic to plot/compare (`median` or `mean`). |
-| `drift` | `alpha`, `use_aggregated`, `individual_channels` | Per-channel significance level (uncorrected p-value); fit aggregated vs raw per-patch deltas; render per-channel figures. |
+| `drift` | `alpha`, `n_bootstrap`, `seed` | Per-channel significance level (uncorrected bootstrap p); matched-pairs bootstrap iterations; RNG seed. |
 | `brdf` | `site_patches`, `exclude_sites`, `target_wl`, `min_scenes`, `n_bootstrap`, `per_site_boot`, `spectrum_n_boot`, `gamma_cap` | Pooled multi-site drift: the roster (one patch per PICS; `null` skips a site), excluded sites, single-channel wavelength, per-site scene floor, the three bootstrap counts, and the unstable-fit cap. Reuses `drift.alpha` + `qc.require_review`. |
 | `extract` | `cache_pixels`, `want_obs`, `filter_agg_flag`, `min_valid_frac` | Cache the raw pixel cube; stream OBS geometry; Aggregate-Flag screening + its threshold. |
 | `granule_search` | `date_start`, `date_end`, `patch_size_km` | Earthdata search window and patch size (step 2). |
@@ -109,7 +109,7 @@ You can always run the underlying scripts directly (e.g. `python scripts/run_del
 | `display_spectra` | Overlay every QC-surviving scene's RAD/RFL spectrum for a patch. |
 | `delta_calculations` | Per-wavelength **t1→t2** % change across matched pairs (band-order join; tidy long CSV). |
 | `PICS_allpatches_aggregate_pairs` | **Option A** — collapse each acquisition pair's spatial-replicate patches to one median ΔR per channel, removing pseudo-replication before the fit. |
-| `matched_pairs_drift_analysis` | Cross-PICS drift: per-channel Theil–Sen slope of ΔR vs Δt, Kendall-τ (uncorrected) significance, and figures. |
+| `matched_pairs_drift_analysis` / `matched_pairs_bootstrap` | Cross-PICS drift: per-channel Theil–Sen slope of ΔR vs Δt with a PICS-stratified matched-pairs bootstrap CI (shared plumbing + figure in the former, the estimator in the latter). |
 | `brdf_drift` | Pooled multi-site quasi-BRDF drift: per-site + joint `(α+β·cosθ)(1+γt)` fits, bootstraps, the shared-drift consistency check, and the design-table assembly. |
 
 The function libraries are side-effect-free; each is driven by a thin runner in `scripts/`.
@@ -170,4 +170,4 @@ Both cube-extract runners can persist the raw, **unscreened** in-patch pixel cub
 pytest
 ```
 
-Unit tests cover the core science (band-order delta join, Theil–Sen / Kendall drift statistics, matched-pair detection, the QC gate, and the BRDF fits — verified by recovering a known injected `(αₛ, βₛ, γ)` — plus the shared-drift consistency verdicts), the config/paths/pipeline plumbing, and a golden regression of the delta→drift chain against a known injected drift. Run them before and after any refactor to confirm the numbers are unchanged.
+Unit tests cover the core science (band-order delta join, the PICS-stratified matched-pairs bootstrap drift statistics — verified by recovering a known injected slope with a bracketing CI — matched-pair detection, the QC gate, and the BRDF fits, verified by recovering a known injected `(αₛ, βₛ, γ)`, plus the shared-drift consistency verdicts) and the config/paths/pipeline plumbing. Run them before and after any refactor to confirm the numbers are unchanged.

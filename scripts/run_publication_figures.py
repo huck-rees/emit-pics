@@ -50,25 +50,18 @@ def _load_drift_spectrum(cfg):
 def _load_mp_drift_spectrum(cfg):
     """Matched-pairs cross-PICS drift spectrum, adapted to the BRDF builder schema.
 
-    Reads whichever matched-pairs drift CSV the configured estimator wrote —
-    ``{size}_drift.csv`` (Theil-Sen, the default) or ``{size}_drift_bootstrap.csv``
-    (``drift.method: bootstrap``) — and renames its columns into the names
-    ``figures.drift_spectrum`` expects, so the matched-pairs figure is rendered by
-    the same builder with the same specs (incl. the +/-2.5 %/yr y-limits). Both CSVs
-    share the same schema (``slope_pct_yr``/``ci_*_pct_yr``/``raw_significant``), so
-    for the bootstrap file the marker becomes the bootstrap median and the whiskers
-    its percentile CI. Water-vapor absorption bands and unfit (NaN-slope) channels
-    are marked ``unstable`` so the builder drops them, exactly as it drops BRDF's
+    Reads the matched-pairs bootstrap drift CSV (``{size}_mp_drift.csv``) and renames
+    its columns into the names ``figures.drift_spectrum`` expects, so the matched-
+    pairs figure is rendered by the same builder as the pooled BRDF spectrum (same
+    specs). The marker is the per-channel drift point estimate and the whiskers its
+    bootstrap 95% CI. Water-vapor absorption bands and unfit (NaN-slope) channels are
+    marked ``unstable`` so the builder drops them, exactly as it drops BRDF's
     numerically unstable channels.
     """
-    if cfg.drift_method == "bootstrap":
-        csv = paths.drift_bootstrap(cfg.patch_size)
-        hint = "scripts/run_matched_pairs_drift_analysis.py with drift.method: bootstrap"
-    else:
-        csv = paths.drift(cfg.patch_size)
-        hint = "scripts/run_matched_pairs_drift_analysis.py"
+    csv = paths.drift(cfg.patch_size)
     if not csv.exists():
-        return None, f"{csv.name} not found — run {hint} first."
+        return None, (f"{csv.name} not found — run "
+                      "scripts/run_matched_pairs_drift_analysis.py first.")
     df = pd.read_csv(csv).rename(columns={
         "slope_pct_yr": "gamma_pct_yr",
         "ci_low_pct_yr": "ci_lo_pct_yr",
@@ -118,6 +111,28 @@ def _load_brdf_single_channel(cfg):
             f"{obs['site'].nunique()} sites)")
 
 
+def _load_brdf_site_spectra(cfg):
+    """Mean rad/rfl spectra, one line per PICS over its 10 km BRDF patch's QC scenes.
+
+    Resolves the BRDF roster (the study PICS + their representative patches) and
+    averages each patch's QC-surviving per-scene spectra band-by-band via
+    :func:`emit_pics.brdf_drift.site_mean_spectra` — the same scene set and loaders
+    the pooled drift fit uses, so this figure is a faithful picture of the surfaces
+    that went into the analysis. Reads the cached per-scene per-channel CSVs.
+    """
+    from emit_pics import brdf_drift
+    roster, _, _ = brdf_drift.resolve_roster(cfg)
+    if not roster:
+        return None, "no BRDF roster (brdf.site_patches empty)."
+    spectra, notes = brdf_drift.site_mean_spectra(roster, cfg)
+    if not spectra:
+        why = "; ".join(f"{n['site']}: {n['note']}" for n in notes)
+        return None, f"no usable PICS ({why})."
+    dropped = [n["site"] for n in notes if not n["kept"]]
+    tail = f"; dropped {', '.join(dropped)}" if dropped else ""
+    return {"spectra": spectra}, f"{len(spectra)} PICS mean spectra{tail}"
+
+
 def _study_sites(cfg):
     """The study PICS as a GeoDataFrame of ROI boxes, plus a provenance note.
 
@@ -161,6 +176,52 @@ def _load_coverage_single(cfg, *, highlight="Libya 4", coverage_product="rfl"):
             f"{highlight} patches from {bnds.name}")
 
 
+def _load_study_overview(cfg):
+    """Early-results 5×3 overview: per-PICS coverage grid, matched-pairs grid, BRDF dates.
+
+    Assembles, for each study PICS (fixed display order): its patch grid tagged with
+    per-patch L2A scene coverage (``_cov``) and per-patch matched-pairs count
+    (``_pairs``, from the analysis's per-patch delta tables), the PICS boundary, the
+    QC-reviewed BRDF scene dates (from ``brdf_design.csv``), and the per-PICS total /
+    unique matched-pair counts.
+    """
+    from emit_pics.id_granules import load_patches
+    from emit_pics.config import pics_geodataframe
+    from emit_pics.matched_pairs_drift_analysis import load_delta_tables
+    order = ["Libya_4", "Libya_1", "Algeria_3", "Algeria_5", "Mauritania_1"]
+
+    df = load_delta_tables(paths.DELTA_PER_PATCH_DIR, cfg.patch_size)
+    if df.empty:
+        return None, "no per-patch delta tables — run the matched-pairs analysis first."
+    b0 = df["band_index"].iloc[0]
+    one = df[df["band_index"] == b0]                     # one row per (patch, pair)
+    des_path = paths.brdf_design()
+    if not des_path.exists():
+        return None, f"{des_path.name} not found — run scripts/run_brdf_assemble.py first."
+    des = pd.read_csv(des_path, parse_dates=["datetime"])
+
+    sites_data = []
+    for s in order:
+        bnds = paths.patch_bnds(s)
+        if not bnds.exists():
+            return None, f"missing patch bounds for {s} ({bnds.name})."
+        pat = load_patches(bnds, cfg.search_patch_size_km).copy()
+        pat["_cov"] = pat["n_gran_ovlp_rfl"].fillna(0).astype(int)
+        per_patch = one[one["PICS_ID"] == s].groupby("patch_id").size()
+        pat["_pairs"] = pat["patch_id"].astype(str).map(per_patch).fillna(0).astype(int)
+        sub = one[one["PICS_ID"] == s]
+        sites_data.append({
+            "name": s.replace("_", " "),
+            "patches": pat,
+            "boundary": pics_geodataframe(s),
+            "dates": des.loc[des["site"] == s, "datetime"].sort_values().to_numpy(),
+            "total_pairs": int(len(sub)),
+            "unique_pairs": int(sub["pair_id"].nunique()),
+            "n_brdf": int((des["site"] == s).sum()),
+        })
+    return {"sites_data": sites_data}, f"{len(sites_data)} PICS early-results overview"
+
+
 #: figure key -> {name (output stem; ``{wl}`` filled from brdf.target_wl), loader,
 #: builder}. No manuscript numbers — those churn as the paper is edited, so each
 #: figure carries a stable descriptive name instead.
@@ -177,7 +238,7 @@ FIGURES = {
     "brdf_drift_spectrum": {"name": "brdf_drift_spectrum",
                             "load": _load_drift_spectrum,
                             "build": figures.drift_spectrum},
-    "mp_drift_spectrum": {"name": "matchedpairs_drift_spectrum",
+    "mp_drift_spectrum": {"name": "mp_drift_spectrum",
                           "load": _load_mp_drift_spectrum,
                           "build": figures.drift_spectrum,
                           "kwargs": {"sig_col": "sig_raw",
@@ -187,6 +248,12 @@ FIGURES = {
     "brdf_single_channel": {"name": "brdf_singlechannel_{wl}nm",
                             "load": _load_brdf_single_channel,
                             "build": figures.brdf_single_channel},
+    "site_mean_spectra": {"name": "meanspectra_byPICS",
+                          "load": _load_brdf_site_spectra,
+                          "build": figures.brdf_site_mean_spectra},
+    "study_overview_grid": {"name": "earlyresults_overview",
+                            "load": _load_study_overview,
+                            "build": figures.study_overview_grid},
 }
 
 

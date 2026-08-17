@@ -35,7 +35,7 @@ correction's impact, set `radiometry.earth_sun_normalize: false` and re-run
 `analyze → drift → brdf`. So the uncorrected run cannot overwrite the corrected
 baseline, its **derived** outputs (deltas §6/§7, matched-pairs drift §8, BRDF
 §9/§14, and their figures) are nested under a `radiometry.variant_label`
-subfolder (default `no_earthsun`), e.g. `data/drift/no_earthsun/10_drift.csv`,
+subfolder (default `no_earthsun`), e.g. `data/drift/no_earthsun/10_mp_drift.csv`,
 `data/brdf/no_earthsun/…`. The corrected run (`earth_sun_normalize: true`) is
 **always** the canonical flat layout. Raw inputs — the per-scene stats (§3a),
 geometry (§3b), pixel cubes, QC worksheets and matched-pairs CSVs — are shared
@@ -61,7 +61,7 @@ active label (`""` for the baseline) and rides along in every sidecar.
 | `data/matched_pairs/{site}_{patch}_matched_pairs.csv` | Matched pairs (step 5) |
 | `data/delta_r/per_patch/{site}_{patch}_delta.csv` | Per-patch per-wavelength deltas (step 6) |
 | `data/delta_r/aggregated/{site}_{size}_delta.csv` | Per-PICS aggregated deltas (step 7) |
-| `data/drift/{size}_drift.csv` | Cross-PICS per-channel drift stats (step 8) |
+| `data/drift/{size}_mp_drift.csv` | Cross-PICS per-channel matched-pairs bootstrap drift stats (step 8) |
 | `data/brdf/brdf_design.csv` | Pooled multi-site per-scene design table (BRDF step 9) |
 | `data/brdf/brdf_leverage.csv` | Per-site scene-count / geometry-leverage summary (BRDF step 9) |
 | `data/brdf/brdf_persite_gamma_{wl}nm.csv` | Per-site standalone γ + CI, shared-drift check (BRDF step 10) |
@@ -201,14 +201,15 @@ per-patch-only columns (`patch_id`, `wavelength_t2`, and the raw per-scene
 | `delta_rfl_pct_median_{std,min,max}` | percent | Across-patch spread of the median reflectance delta. |
 | `delta_rad_pct_median_{std,min,max}` | percent | Across-patch spread of the median radiance delta. |
 
-## 8. Drift stats — `{size}_drift.csv`
+## 8. Drift stats — `{size}_mp_drift.csv`
 
-One row per `(band × product)`; absorption-band rows carry NaN stats. The
-`slope_pct_yr` (free-intercept Theil–Sen) is the **primary** drift estimate; the
-`origin_*` columns are a **secondary sensitivity estimator** — a robust
-through-origin fit that forces `ΔR = 0` at `Δt = 0`. Agreement between the two
-corroborates the zero-intercept premise; a systematic gap flags residual bias
-(read alongside `intercept_pct`).
+One row per `(band × product)`; absorption-band rows carry NaN stats. Produced by
+the **PICS-stratified matched-pairs bootstrap**: the point estimate `slope_pct_yr`
+is a Theil–Sen fit of ΔR-vs-Δt on one representative ΔR per matched pair (median
+across its patch replicates), pooled across PICS; the CI and p-value come from
+resampling the matched pairs with replacement, stratified by PICS, with one random
+patch ΔR per resampled pair each iteration (`drift.n_bootstrap` resamples,
+`drift.seed`).
 
 | Column | Type/unit | Meaning |
 | --- | --- | --- |
@@ -216,15 +217,17 @@ corroborates the zero-intercept premise; a systematic gap flags residual bias
 | `band_index` | int 0–284 | EMIT channel index. |
 | `wavelength` | nm | Channel wavelength (median across pairs). |
 | `absorption_band` | bool | Water-vapor band (excluded from the fit). |
-| `n` | int | Number of `(pair)` points fitted for the band. |
-| `slope_pct_yr` | %/year | Theil–Sen drift rate (primary estimate; NaN if unfitted). |
-| `ci_low_pct_yr`, `ci_high_pct_yr` | %/year | 95% confidence interval on the slope. |
-| `intercept_pct` | percent | Theil–Sen intercept (bias diagnostic; ≈0 expected). |
-| `kendall_tau` | −1…+1 | Kendall rank correlation. |
-| `p_value` | float | Kendall-τ p-value (uncorrected). |
-| `origin_slope_pct_yr` | %/year | Origin-forced drift rate: median of the per-pair ratios `ΔR/Δt` (secondary sensitivity estimator; NaN if unfitted). |
-| `origin_ci_low_pct_yr`, `origin_ci_high_pct_yr` | %/year | Distribution-free (order-statistic) 95% CI on the origin-forced rate. |
-| `raw_significant` | bool | `p_value ≤ alpha` (`drift.alpha`; per-channel, uncorrected). |
+| `slope_pct_yr` | %/year | Matched-pairs (Theil–Sen) drift rate — point estimate; NaN if unfitted. |
+| `ci_low_pct_yr`, `ci_high_pct_yr` | %/year | Bootstrap 95% CI on the slope (percentile). |
+| `p_value` | float | Two-sided bootstrap p (slope ≠ 0). |
+| `raw_significant` | bool | Bootstrap 95% CI excludes 0 (equivalently `p_value ≤ drift.alpha`). |
+| `n_scenes` | int | Distinct scenes contributing pairs at this band. |
+| `n_edges` | int | Distinct matched pairs at this band (points per fit). |
+| `n_boot` | int | Valid bootstrap iterations (of `drift.n_bootstrap`). |
+
+> **Note — scene reuse.** A scene appears in many pairs, so the pairs are not fully
+> independent; the bootstrap resamples pairs (not scenes) and so runs slightly
+> optimistic. A scene-level cluster bootstrap would remove that bias (future work).
 
 ---
 

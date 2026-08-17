@@ -26,6 +26,8 @@ messaging. The shared-drift **consistency check** (:func:`consistency_check`)
 computes a verdict for the runner to warn on — it never blocks.
 """
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy.optimize import least_squares
@@ -94,6 +96,43 @@ def boot_site_gamma(g, t, rho, n_boot, seed=1):
             lambda x: (x[0] + x[1] * g[idx]) * (1 + x[2] * t[idx]) - rho[idx], x0)
         draws[k] = r.x[2]
     return base["gamma"], np.percentile(draws, [2.5, 97.5])
+
+
+def persite_gamma_spectrum(obs, product, fit_bands, wlgrid, *,
+                           earth_sun_normalize=True, e0_method="spencer"):
+    """Standalone per-site ``gamma(lambda)`` for one product — the §4b stress test, spectral.
+
+    The spectral companion to :func:`boot_site_gamma`: at every fit channel, fit
+    each PICS on its **own** 3-parameter model ``(alpha + beta cos theta)(1 + gamma
+    t)`` (:func:`fit_site`, best fit only, **no bootstrap**) and keep its ``gamma``.
+    Because each site drifts independently (no shared ``gamma``), lines that track
+    together support one common drift while a diverging line flags a site whose
+    drift disagrees — the whole-spectrum version of the forest-plot check.
+
+    Reads the per-scene per-channel medians via :func:`channel_matrix` (radiance
+    Earth–Sun normalized when *earth_sun_normalize* is set). Returns a tidy frame,
+    one row per (product, site, band): ``wavelength`` and ``gamma_pct_yr`` (%/yr;
+    NaN where a site has fewer than 3 finite scenes at that channel).
+    """
+    sites = sorted(pd.unique(obs["site"]))
+    g_all = obs["g"].to_numpy(float)
+    t_all = obs["t"].to_numpy(float)
+    site_all = obs["site"].to_numpy()
+    M = channel_matrix(obs, product, len(wlgrid),
+                       earth_sun_normalize=earth_sun_normalize, e0_method=e0_method)
+    rows = []
+    for s in sites:
+        m = site_all == s
+        gs, ts = g_all[m], t_all[m]
+        for b in fit_bands:
+            rho = M[m, int(b)]
+            ok = np.isfinite(rho) & np.isfinite(gs) & np.isfinite(ts)
+            gam = (fit_site(gs[ok], ts[ok], rho[ok])["gamma"]
+                   if int(ok.sum()) >= 3 else np.nan)
+            rows.append({"product": product, "site": s, "band_index": int(b),
+                         "wavelength": float(wlgrid[int(b)]),
+                         "gamma_pct_yr": 100.0 * gam})
+    return pd.DataFrame(rows)
 
 
 def consistency_check(persite, *, marginal_ratio=0.25):
@@ -483,3 +522,54 @@ def channel_matrix(obs, product, nband, *, earth_sun_normalize=True,
         if s is not None and len(s) == nband:
             M[i] = s[f"median_{product}"].to_numpy(float)
     return M
+
+
+def site_mean_spectra(roster, cfg):
+    """Per-PICS mean rad/rfl spectrum over each patch's QC-surviving scenes.
+
+    For every ``{pics_id: patch}`` in *roster*, enumerate the QC-surviving,
+    reflectance-bearing scenes — the SAME set the BRDF design uses, via
+    :func:`load_site_obs` — read each scene's per-channel median spectrum with
+    :func:`channel_matrix`, and average band-by-band across scenes. Radiance is
+    Earth–Sun (``E0``) normalized when ``cfg.earth_sun_normalize`` is set (as in
+    the drift fit); reflectance is untouched and is NaN (so the mean is NaN) in the
+    deep water-vapor bands where L2A is fill, breaking the reflectance line there.
+
+    Returns
+    -------
+    (dict, list)
+        ``spectra`` = ``{pics_id: {"wl", "mean_rad", "mean_rfl": np.ndarray,
+        "n": int, "patch": str}}`` for the usable sites, and ``notes`` (one dict
+        per roster site: ``site``, ``patch``, ``n``, ``note``, ``kept``).
+    """
+    spectra, notes = {}, []
+    for pics_id, patch in roster.items():
+        obs, _, note = load_site_obs(
+            pics_id, patch, cfg.brdf_target_wl,
+            require_qc_review=cfg.require_qc_review,
+            earth_sun_normalize=cfg.earth_sun_normalize, e0_method=cfg.e0_method)
+        if obs is None or obs.empty:
+            notes.append({"site": pics_id, "patch": patch, "n": 0,
+                          "note": note, "kept": False})
+            continue
+        ref = load_scene_spectrum(obs.iloc[0]["scene_id"], pics_id, patch,
+                                  paths.RFL_DIR, paths.RAD_DIR,
+                                  earth_sun_normalize=cfg.earth_sun_normalize,
+                                  e0_method=cfg.e0_method)
+        wl = ref["central_wl"].to_numpy(float)
+        nband = len(ref)
+        M_rad = channel_matrix(obs, "rad", nband,
+                               earth_sun_normalize=cfg.earth_sun_normalize,
+                               e0_method=cfg.e0_method)
+        M_rfl = channel_matrix(obs, "rfl", nband,
+                               earth_sun_normalize=cfg.earth_sun_normalize,
+                               e0_method=cfg.e0_method)
+        with warnings.catch_warnings():   # all-NaN band (H2O fill) -> NaN, not a warning
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            spectra[pics_id] = {"wl": wl,
+                                "mean_rad": np.nanmean(M_rad, axis=0),
+                                "mean_rfl": np.nanmean(M_rfl, axis=0),
+                                "n": int(len(obs)), "patch": str(patch)}
+        notes.append({"site": pics_id, "patch": patch, "n": int(len(obs)),
+                      "note": note, "kept": True})
+    return spectra, notes

@@ -33,6 +33,12 @@ CUBE_DIR = DATA / "pixel_cubes"
 QC_DIR = DATA / "qc"
 MATCHED_DIR = DATA / "matched_pairs"   # matched pairs are geometry-based (variant-free)
 
+# 20 km vs 10 km patch-size sensitivity (supplementary diagnostic). A fixed
+# comparison of two already-computed BRDF configurations, so it is deliberately
+# NOT variant-/label-nested — one flat home adjacent to data/brdf and figures/.
+PATCH_SENS_DIR = DATA / "20_km_patch_sensitivity"
+PATCH_SENS_FIG_DIR = FIGURES / "20_km_patch_sensitivity"
+
 _PRODUCT_DIR = {"rad": RAD_DIR, "rfl": RFL_DIR}
 
 # ------------------------------------------------------- derived-output directories
@@ -218,13 +224,8 @@ def delta_aggregated(site, size) -> Path:
 
 
 def drift(size) -> Path:
-    """Cross-PICS per-channel drift stats (``{size}_drift.csv``)."""
-    return DRIFT_DIR / f"{size}_drift.csv"
-
-
-def drift_bootstrap(size) -> Path:
-    """Matching-bootstrap per-channel drift stats (``{size}_drift_bootstrap.csv``)."""
-    return DRIFT_DIR / f"{size}_drift_bootstrap.csv"
+    """Matched-pairs bootstrap per-channel drift stats (``{size}_mp_drift.csv``)."""
+    return DRIFT_DIR / f"{size}_mp_drift.csv"
 
 
 # --------------------------------------------------- BRDF pooled multi-site drift
@@ -277,18 +278,8 @@ def granule_coverage_fig(site, patch_size_km) -> Path:
 
 
 def drift_spectrum_fig(size) -> Path:
-    """Drift-spectrum figure (``{size}_drift_spectrum.png``)."""
-    return MATCHED_FIG_DIR / f"{size}_drift_spectrum.png"
-
-
-def drift_bootstrap_spectrum_fig(size) -> Path:
-    """Matching-bootstrap drift-spectrum figure (``{size}_drift_bootstrap_spectrum.png``)."""
-    return MATCHED_FIG_DIR / f"{size}_drift_bootstrap_spectrum.png"
-
-
-def channel_fig(size, wavelength) -> Path:
-    """Per-channel ΔR-vs-Δt figure (``{size}_{wavelength:04.0f}.png``)."""
-    return CHANNEL_FIG_DIR / f"{size}_{wavelength:04.0f}.png"
+    """Matched-pairs drift-spectrum figure (``{size}_mp_drift_spectrum.png``)."""
+    return MATCHED_FIG_DIR / f"{size}_mp_drift_spectrum.png"
 
 
 # --------------------------------------------------- BRDF pooled multi-site figures

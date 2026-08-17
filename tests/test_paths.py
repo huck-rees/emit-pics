@@ -28,7 +28,7 @@ def test_filenames_match_historical_convention():
     assert paths.matched_pairs("Libya_4", "10_7_1").name == "Libya_4_10_7_1_matched_pairs.csv"
     assert paths.delta_per_patch("Libya_4", "10_7_1").name == "Libya_4_10_7_1_delta.csv"
     assert paths.delta_aggregated("Libya_4", "10").name == "Libya_4_10_delta.csv"
-    assert paths.drift("10").name == "10_drift.csv"
+    assert paths.drift("10").name == "10_mp_drift.csv"
 
     assert paths.perchannel("Libya_4", "10_7_1", TS, "rfl").name == \
         "Libya_4_10_7_1_20230101T100000_perchannel_rfl.csv"
@@ -50,9 +50,7 @@ def test_figure_filenames():
         "Libya_4_10_7_1_median_rfl_spectra.png"
     assert paths.spectra_fig("Libya_4", "10_7_1", "median", "rad").name == \
         "Libya_4_10_7_1_median_rad_spectra.png"
-    assert paths.drift_spectrum_fig("10").name == "10_drift_spectrum.png"
-    assert paths.channel_fig("10", 500.0).name == "10_0500.png"     # {wl:04.0f}
-    assert paths.channel_fig("10", 1234.5).name == "10_1234.png"
+    assert paths.drift_spectrum_fig("10").name == "10_mp_drift_spectrum.png"
     assert paths.granule_coverage_fig("Libya_4", 10).name == \
         "Libya_4_10km_EMITgranule_coverage.png"
 
@@ -96,7 +94,6 @@ def test_paths_land_in_expected_dirs():
     assert paths.delta_aggregated("Libya_4", "10").parent == paths.DELTA_AGG_DIR
     assert paths.perchannel("Libya_4", "10_7_1", TS, "rfl").parent == paths.RFL_DIR
     assert paths.perchannel("Libya_4", "10_7_1", TS, "rad").parent == paths.RAD_DIR
-    assert paths.channel_fig("10", 500.0).parent == paths.CHANNEL_FIG_DIR
 
 
 # ----------------------------------------------------- radiometry output variant
@@ -106,7 +103,7 @@ def test_baseline_variant_is_empty_and_layout_flat():
     assert paths.DRIFT_DIR == paths.DATA / "drift"
     assert paths.BRDF_DIR == paths.DATA / "brdf"
     assert paths.DELTA_AGG_DIR == paths.DATA / "delta_r" / "aggregated"
-    assert paths.drift("10") == paths.DATA / "drift" / "10_drift.csv"
+    assert paths.drift("10") == paths.DATA / "drift" / "10_mp_drift.csv"
 
 
 def test_variant_nests_only_derived_dirs(reset_variant):
@@ -121,7 +118,7 @@ def test_variant_nests_only_derived_dirs(reset_variant):
         paths.FIGURES / "matched_pairs" / "no_earthsun" / "individual_channels"
     assert paths.BRDF_FIG_DIR == paths.FIGURES / "brdf" / "no_earthsun"
     # ...and the builder functions follow the redirect.
-    assert paths.drift("10") == paths.DATA / "drift" / "no_earthsun" / "10_drift.csv"
+    assert paths.drift("10") == paths.DATA / "drift" / "no_earthsun" / "10_mp_drift.csv"
     assert paths.brdf_design() == paths.DATA / "brdf" / "no_earthsun" / "brdf_design.csv"
     assert paths.delta_aggregated("Libya_4", "10").parent == paths.DELTA_AGG_DIR
     # Raw-input dirs are NEVER moved (shared across variants).
@@ -135,7 +132,7 @@ def test_variant_nests_only_derived_dirs(reset_variant):
 def test_filenames_are_variant_independent(reset_variant):
     # Only the parent folder changes; the file basename is identical.
     paths.set_variant("no_earthsun")
-    assert paths.drift("10").name == "10_drift.csv"
+    assert paths.drift("10").name == "10_mp_drift.csv"
     assert paths.delta_aggregated("Libya_4", "10").name == "Libya_4_10_delta.csv"
     assert paths.brdf_drift_spectrum().name == "brdf_drift_spectrum.csv"
 

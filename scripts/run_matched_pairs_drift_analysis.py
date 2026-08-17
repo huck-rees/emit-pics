@@ -1,39 +1,28 @@
 #!/usr/bin/env python
-"""Cross-PICS radiometric-drift analysis for one patch size.
+"""Cross-PICS radiometric-drift analysis for one patch size (matched-pairs bootstrap).
 
-Pure **local** post-processor (no Earthdata). Pools the delta CSVs of one patch
-size across all PICS and, per EMIT channel, fits the drift rate as the robust
-(Theil–Sen) slope of the pairwise percent change ΔR against the pair's time
-separation Δt, using the **median** in-patch statistic. Significance is Kendall's
-τ, reporting the uncorrected per-channel p-value.
+Pure **local** post-processor (no Earthdata). Pools the per-patch delta CSVs of one
+patch size across all PICS and, per EMIT channel, fits the drift rate as the robust
+(Theil-Sen) slope of the pairwise percent change ΔR against the pair's time
+separation Δt, with a **PICS-stratified matched-pairs bootstrap** for the
+uncertainty (:mod:`emit_pics.matched_pairs_bootstrap`):
 
-By default (``USE_AGGREGATED = True``) it consumes the option-A **aggregated**
-tables (``data/delta_r/aggregated/{PICS}_{size}_delta.csv``, one row per
-acquisition pair per channel), so each acquisition pair contributes exactly one
-point and the fit is not pseudo-replicated across spatial-replicate patches; the
-per-channel scatter then sizes each dot by ``n_patches`` (replication).
-Set ``USE_AGGREGATED = False`` to fit the raw per-patch deltas
-(``data/delta_r/per_patch/{PICS}_{PATCH}_delta.csv``) instead, sized by mean
-|SZA| as before.
+* the point estimate is Theil-Sen on one representative ΔR per matched pair (the
+  median across its spatial-replicate patches), pooled across PICS;
+* the 95% CI and p-value come from resampling the matched pairs with replacement,
+  stratified by PICS, drawing one patch's ΔR per resampled pair each iteration.
 
-Setting ``drift.method: bootstrap`` in run_config switches the estimator to the
-one-use-per-scene **matching bootstrap** (:mod:`emit_pics.matched_pairs_bootstrap`),
-which consumes the per-patch tables directly and writes distinct outputs
-(``{size}_drift_bootstrap.csv`` / ``{size}_drift_bootstrap_spectrum.png``) so the
-Theil-Sen products are left intact. ``drift.method: theilsen`` (default) keeps the
-behavior below unchanged.
+Consumes the raw **per-patch** delta tables (the bootstrap needs the spatial
+replicates and scene ids). Water-vapor absorption bands are excluded.
 
 Outputs
 -------
-* ``data/drift/{size}_drift.csv`` — per-channel drift stats (RAD + RFL).
-* ``figures/matched_pairs/{size}_drift_spectrum.png`` — drift rate vs wavelength,
-  with 95% CI whiskers and raw-significance colouring, for both products.
-* ``figures/matched_pairs/individual_channels/{size}_{wavelength}.png`` — one
-  two-panel ΔR-vs-Δt scatter per channel (RAD left, RFL right; colour/shape =
-  PICS, marker size ∝ mean |SZA|). Toggle with ``INDIVIDUAL_CHANNELS``.
+* ``data/drift/{size}_mp_drift.csv`` — per-channel drift stats (RAD + RFL).
+* ``figures/matched_pairs/{size}_mp_drift_spectrum.png`` — drift rate vs wavelength,
+  with bootstrap 95% CI whiskers and raw-significance colouring, for both products.
 
-Requires the step-6 delta CSVs to carry the SZA_t1/SZA_t2/band_index columns;
-re-run ``scripts/run_delta_calculations.py`` if they predate that schema.
+Requires the step-6 delta CSVs to carry the SZA_t1/SZA_t2/band_index/scene-id
+columns; re-run ``scripts/run_delta_calculations.py`` if they predate that schema.
 
 Set the analysis target in run_config.yaml, then run::
 
@@ -50,21 +39,15 @@ from emit_pics.run_config import load_config
 # ============================================================
 cfg = load_config()
 paths.set_variant(cfg.output_variant)   # nest derived outputs under an active radiometry variant
-PATCH_SIZE = cfg.patch_size
-ALPHA = cfg.alpha
-USE_AGGREGATED = cfg.use_aggregated
-INDIVIDUAL_CHANNELS = cfg.individual_channels
-DRIFT_METHOD = cfg.drift_method       # "theilsen" (default) or "bootstrap"
-N_BOOTSTRAP  = cfg.drift_n_bootstrap
-SEED         = cfg.drift_seed
-ONLY_BANDS = None           # script-local: e.g. [0, 50, 150] to render a subset for testing; None = all
+PATCH_SIZE  = cfg.patch_size
+ALPHA       = cfg.alpha
+N_BOOTSTRAP = cfg.drift_n_bootstrap
+SEED        = cfg.drift_seed
 
 # Repo-relative paths — every name is built in emit_pics.paths.
-AGG_DIR       = paths.DELTA_AGG_DIR         # option-A aggregated input
-PER_PATCH_DIR = paths.DELTA_PER_PATCH_DIR   # raw per-patch input
-DRIFT_DIR  = paths.DRIFT_DIR
-FIG_DIR    = paths.MATCHED_FIG_DIR
-CHAN_DIR   = paths.CHANNEL_FIG_DIR
+PER_PATCH_DIR = paths.DELTA_PER_PATCH_DIR   # raw per-patch delta input
+DRIFT_DIR     = paths.DRIFT_DIR
+FIG_DIR       = paths.MATCHED_FIG_DIR
 
 import matplotlib
 matplotlib.use("Agg")          # non-interactive backend
@@ -72,25 +55,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from emit_pics.matched_pairs_drift_analysis import (
-    absorption_band_indices,
-    compute_drift_spectrum,
-    load_aggregated_delta_tables,
-    load_delta_tables,
-    plot_channel_scatter,
-    plot_drift_spectrum,
-)
+from emit_pics.matched_pairs_drift_analysis import load_delta_tables, plot_drift_spectrum
 from emit_pics.matched_pairs_bootstrap import compute_bootstrap_drift_spectrum
 
 
-def run_bootstrap() -> None:
-    """One-use-per-scene matching-bootstrap drift (``drift.method: bootstrap``).
-
-    Consumes the raw **per-patch** delta tables (the bootstrap needs the spatial
-    replicates and scene ids that the aggregated tables have collapsed away),
-    fits a per-channel drift with a scene-disjoint matching bootstrap, and writes
-    to distinct outputs so the Theil-Sen products are never overwritten.
-    """
+def main() -> None:
+    # 1. Pool the per-patch delta tables for this patch size (all PICS).
     try:
         df = load_delta_tables(PER_PATCH_DIR, PATCH_SIZE)
     except ValueError as exc:
@@ -102,72 +72,16 @@ def run_bootstrap() -> None:
               f"(step 6) for the relevant patches first.")
         sys.exit(1)
 
-    print(f"Patch size {PATCH_SIZE} km [matching bootstrap, {N_BOOTSTRAP} iters, "
+    print(f"Patch size {PATCH_SIZE} km [matched-pairs bootstrap, {N_BOOTSTRAP} iters, "
           f"seed {SEED}]: {len(df)} per-patch row(s) | {df['PICS_ID'].nunique()} PICS "
           f"| {df['patch_id'].nunique()} patch(es) | {df['pair_id'].nunique()} pair(s) "
           f"| {df['band_index'].nunique()} channel(s)")
 
+    # 2. Per-channel bootstrap drift spectra (both products).
     spec_rad = compute_bootstrap_drift_spectrum(df, "rad", n_boot=N_BOOTSTRAP,
                                                 alpha=ALPHA, seed=SEED)
     spec_rfl = compute_bootstrap_drift_spectrum(df, "rfl", n_boot=N_BOOTSTRAP,
                                                 alpha=ALPHA, seed=SEED)
-
-    DRIFT_DIR.mkdir(parents=True, exist_ok=True)
-    out_csv = paths.drift_bootstrap(PATCH_SIZE)
-    pd.concat([spec_rad, spec_rfl], ignore_index=True).to_csv(out_csv, index=False)
-    provenance.write_sidecar(out_csv, cfg.as_dict())
-    print(f"\nBootstrap drift stats CSV -> {out_csv}")
-    for name, spec in (("RAD", spec_rad), ("RFL", spec_rfl)):
-        n_fit = int(spec["slope_pct_yr"].notna().sum())
-        n_sig = int(spec["raw_significant"].fillna(False).sum())
-        pairs = spec["n_pairs"].dropna()
-        scenes = spec["n_scenes"].replace(0, np.nan).dropna()
-        note = (f" | ~{pairs.median():.0f} pooled pair(s)/iter across "
-                f"{scenes.median():.0f} scene(s)" if len(pairs) else "")
-        print(f"  {name}: {n_fit} channel(s) fit | {n_sig} with CI excluding 0{note}")
-
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
-    fig = plot_drift_spectrum(spec_rad, spec_rfl, patch_size=PATCH_SIZE, alpha=ALPHA)
-    spec_png = paths.drift_bootstrap_spectrum_fig(PATCH_SIZE)
-    fig.savefig(spec_png, dpi=200, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Bootstrap drift spectrum -> {spec_png}")
-    print("\n(Per-channel scatter overlays are a Theil-Sen diagnostic; not drawn in "
-          "bootstrap mode.)\nDone.")
-
-
-def main() -> None:
-    if DRIFT_METHOD == "bootstrap":
-        run_bootstrap()
-        return
-
-    # 1. Pool the delta tables for this patch size (aggregated by default).
-    delta_dir = AGG_DIR if USE_AGGREGATED else PER_PATCH_DIR
-    loader = load_aggregated_delta_tables if USE_AGGREGATED else load_delta_tables
-    size_by = "n_patches" if USE_AGGREGATED else "sza"
-    try:
-        df = loader(delta_dir, PATCH_SIZE)
-    except ValueError as exc:
-        print(f"\nInput schema error: {exc}")
-        sys.exit(1)
-    if df.empty:
-        upstream = ("run_PICS_allpatches_aggregate_pairs.py" if USE_AGGREGATED
-                    else "run_delta_calculations.py")
-        print(f"No {'aggregated ' if USE_AGGREGATED else ''}delta CSVs for patch "
-              f"size {PATCH_SIZE!r} in {delta_dir}.\n"
-              f"Run scripts/{upstream} for the relevant patches first.")
-        sys.exit(1)
-
-    src = "aggregated (1 row/pair/channel)" if USE_AGGREGATED else "per-patch (pseudo-replicated)"
-    patch_note = (f"{df['patch_id'].nunique()} patch(es) | " if "patch_id" in df.columns
-                  else "")
-    print(f"Patch size {PATCH_SIZE} km [{src}]: {len(df)} rows | "
-          f"{df['PICS_ID'].nunique()} PICS | {patch_note}"
-          f"{df['pair_id'].nunique()} pair(s) | {df['band_index'].nunique()} channel(s)")
-
-    # 2. Per-channel drift spectra (both products).
-    spec_rad = compute_drift_spectrum(df, "rad", alpha=ALPHA)
-    spec_rfl = compute_drift_spectrum(df, "rfl", alpha=ALPHA)
 
     DRIFT_DIR.mkdir(parents=True, exist_ok=True)
     out_csv = paths.drift(PATCH_SIZE)
@@ -176,15 +90,12 @@ def main() -> None:
     print(f"\nDrift stats CSV -> {out_csv}")
     for name, spec in (("RAD", spec_rad), ("RFL", spec_rfl)):
         n_fit = int(spec["slope_pct_yr"].notna().sum())
-        n_raw = int(spec["raw_significant"].fillna(False).sum())
-        print(f"  {name}: {n_fit} channel(s) fit | {n_raw} significant (p<{ALPHA})")
-        # Sensitivity check: how far the origin-forced (median-of-ratios) rate sits
-        # from the free-intercept Theil-Sen rate. A small gap corroborates the
-        # zero-intercept premise; a systematic gap flags residual bias.
-        gap = (spec["origin_slope_pct_yr"] - spec["slope_pct_yr"]).abs()
-        if gap.notna().any():
-            print(f"       origin-forced vs Theil-Sen |Δslope| (%/yr): "
-                  f"median {gap.median():.3f}, max {gap.max():.3f}")
+        n_sig = int(spec["raw_significant"].fillna(False).sum())
+        edges = spec["n_edges"].replace(0, np.nan).dropna()
+        scenes = spec["n_scenes"].replace(0, np.nan).dropna()
+        note = (f" | ~{edges.median():.0f} pair(s) across {scenes.median():.0f} scene(s)"
+                if len(edges) else "")
+        print(f"  {name}: {n_fit} channel(s) fit | {n_sig} with CI excluding 0{note}")
 
     # 3. Drift-spectrum figure.
     FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -192,32 +103,7 @@ def main() -> None:
     spec_png = paths.drift_spectrum_fig(PATCH_SIZE)
     fig.savefig(spec_png, dpi=200, bbox_inches="tight")
     plt.close(fig)
-    print(f"Drift spectrum  -> {spec_png}")
-
-    # 4. Optional per-channel two-panel scatter plots.
-    if INDIVIDUAL_CHANNELS:
-        CHAN_DIR.mkdir(parents=True, exist_ok=True)
-        all_bands = (sorted(df["band_index"].unique()) if ONLY_BANDS is None
-                     else list(ONLY_BANDS))
-        abs_bands = set(absorption_band_indices(df))
-        bands = [b for b in all_bands if b not in abs_bands]
-        spectra = {"rad": spec_rad, "rfl": spec_rfl}
-        print(f"\nRendering {len(bands)} per-channel figure(s) "
-              f"({len(abs_bands)} water-vapor absorption channel(s) excluded) "
-              f"-> {CHAN_DIR}")
-        n_written = 0
-        for k, bidx in enumerate(bands, 1):
-            fig, wl = plot_channel_scatter(df, bidx, spectra=spectra, size_by=size_by)
-            if fig is None:
-                continue
-            path = paths.channel_fig(PATCH_SIZE, wl)
-            fig.savefig(path, dpi=150, bbox_inches="tight")
-            plt.close(fig)
-            n_written += 1
-            if k % 50 == 0 or k == len(bands):
-                print(f"  [{k}/{len(bands)}] latest: {path.name}")
-        print(f"  wrote {n_written} channel figure(s)")
-
+    print(f"Drift spectrum -> {spec_png}")
     print("\nDone.")
 
 

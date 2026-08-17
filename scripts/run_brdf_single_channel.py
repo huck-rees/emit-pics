@@ -27,6 +27,9 @@ Outputs (``{wl}`` = target wavelength, rounded)
 * ``data/brdf/brdf_joint_fit_{wl}nm.csv`` — §5 per-site alpha/beta + shared gamma.
 * ``data/brdf/brdf_bootstrap_gamma_{wl}nm.csv`` — §7 pooled gamma, SE, 95% CI.
 * ``figures/brdf/brdf_persite_gamma_{wl}nm.png`` — §4b forest plot.
+* ``figures/brdf/brdf_persite_gamma_spectrum.{pdf,svg}`` — §4b per-site standalone
+  gamma(lambda) across all channels (one point series per PICS, best fit, no
+  bootstrap), rendered to publication (manuscript) specs.
 * ``figures/brdf/brdf_corrected_{wl}nm.png`` — §6 corrected collapse.
 * ``figures/brdf/brdf_bootstrap_{wl}nm.png`` — §7 bootstrap histogram.
 
@@ -41,6 +44,7 @@ import numpy as np
 
 from emit_pics import brdf_drift, paths, provenance
 from emit_pics.run_config import load_config
+from emit_pics.viz import figures as vizfigures, style
 
 # ============================================================
 # INPUTS — set the roster + knobs in run_config.yaml (brdf:), not here.
@@ -51,6 +55,7 @@ paths.set_brdf_label(cfg.brdf_label)    # extra BRDF-only sub-namespace (e.g. pa
 TARGET_WL     = cfg.brdf_target_wl
 N_BOOTSTRAP   = cfg.brdf_n_bootstrap     # pooled shared-gamma resamples (§7)
 PER_SITE_BOOT = cfg.brdf_per_site_boot   # per-site standalone-gamma resamples (§4b)
+GAMMA_CAP     = cfg.brdf_gamma_cap       # %/yr; degenerate per-site fits hidden from the spectrum
 
 #: Product -> plot colour (matches the notebook).
 PRODUCTS = {"rad": "#1f77b4", "rfl": "#2ca02c"}
@@ -201,6 +206,33 @@ def main() -> None:
     fig = _plot_persite(persite, sites)
     fig.savefig(paths.brdf_persite_gamma_fig(TARGET_WL), dpi=200, bbox_inches="tight")
     plt.close(fig)
+
+    # 1b. §4b spectral stress test — each PICS's standalone gamma across ALL channels.
+    ref = brdf_drift.scene_perchannel(obs.iloc[0]["site"], obs.iloc[0]["patch"],
+                                      obs.iloc[0]["timestamp"], "rfl")
+    if ref is None:
+        print("First design scene has no reflectance per-channel CSV; skipping the "
+              "per-site gamma spectrum.")
+    else:
+        wlgrid, _excl, fit_bands = brdf_drift.water_vapor_mask(ref)
+        spec_frames = [brdf_drift.persite_gamma_spectrum(
+                           obs, prod, fit_bands, wlgrid,
+                           earth_sun_normalize=cfg.earth_sun_normalize,
+                           e0_method=cfg.e0_method)
+                       for prod in PRODUCTS]
+        persite_spec = pd.concat(spec_frames, ignore_index=True)
+        # Hide degenerate per-site fits (near-zero baseline -> gamma explodes), as
+        # the pooled spectrum does, so the points stay on a readable scale.
+        persite_spec.loc[persite_spec["gamma_pct_yr"].abs() > GAMMA_CAP,
+                         "gamma_pct_yr"] = np.nan
+        # Publication specs: manuscript theme (Arial, Elsevier width, vector PDF+SVG,
+        # no on-figure title), dots (no interpolation across the masked bands).
+        with style.theme("manuscript"):
+            fig = vizfigures.persite_gamma_spectrum(persite_spec, ylim=(-3.0, 3.0))
+            written = style.save(fig, "brdf_persite_gamma_spectrum",
+                                 out_dir=paths.BRDF_FIG_DIR)
+        for p in written:
+            print(f"Per-site gamma spectrum -> {p}")
 
     # 2. §5 — joint pooled fit (per-site alpha/beta, one shared gamma).
     joint = {p: brdf_drift.fit_joint(obs, p) for p in PRODUCTS}
