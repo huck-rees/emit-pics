@@ -8,18 +8,16 @@ dependencies:
   - scipy
   - xarray
   - netCDF4
-  - rasterio
+  - h5netcdf
   - geopandas
   - shapely
+  - pyproj
   - matplotlib
+  - cartopy
+  - contextily
   - pyyaml
   - jupyter
   - jupyterlab
-  - rioxarray
-  - h5netcdf
-  - spectral
-  - contextily        # satellite basemap tiles for the coverage-map figure
-  - cartopy           # locator map (coastlines/borders/graticule) for the study-overview figure
   - pytest
   - pip
   - pip:

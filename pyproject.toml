@@ -26,15 +26,14 @@ dependencies = [
     "scipy",
     "xarray",
     "netCDF4",
-    "rasterio",
+    "h5netcdf",
     "geopandas",
     "shapely",
+    "pyproj",
     "matplotlib",
     "cartopy",
+    "contextily",
     "pyyaml",
-    "rioxarray",
-    "h5netcdf",
-    "spectral",
     "earthaccess",
 ]
 

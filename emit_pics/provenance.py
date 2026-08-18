@@ -25,7 +25,7 @@ from emit_pics.paths import REPO_ROOT
 
 #: Packages whose versions are worth pinning in the record.
 _TRACKED_PACKAGES = (
-    "numpy", "pandas", "scipy", "xarray", "netCDF4", "rasterio",
+    "numpy", "pandas", "scipy", "xarray", "netCDF4",
     "geopandas", "shapely", "matplotlib", "earthaccess",
 )
 
