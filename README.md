@@ -13,7 +13,7 @@ config/           sites.yaml — PICS site definitions (bounding boxes + metadat
 scripts/          Thin command-line runners (read run_config.yaml) + run_pipeline.py orchestrator
 data/             Pipeline inputs/outputs (contents gitignored; folder kept via .gitkeep)
 figures/          Generated figures (contents gitignored; folder kept via .gitkeep)
-docs/             Data dictionary + implementation plans
+docs/             Data dictionary
 notebooks/        Exploration and analysis notebooks
 tests/            Unit tests (pytest)
 ```
@@ -61,9 +61,10 @@ Add `--dry-run` to any stage to print the exact steps it would run without execu
 | --- | --- | --- |
 | *(top level)* | `site`, `patch`, `patch_size` | **Required.** Analysis target: PICS site, single-patch id (e.g. `10_7_1`), and patch-size token (e.g. `10`, km). |
 | `products` | `rad_short_name`, `rfl_short_name` | EMIT collection short-names (`EMITL1BRAD`, `EMITL2ARFL`). |
-| `matching` | `sza_tol`, `vza_tol` | Matched-pair tolerances (degrees) on \|ΔSZA\| and \|ΔVZA\|. |
+| `matching` | `sza_tol`, `vza_tol`, `min_pair_days` | Matched-pair tolerances (degrees) on \|ΔSZA\| and \|ΔVZA\|, plus the minimum time separation (days) for a pair (`0` = off). |
 | `qc` | `require_review` | If true, downstream steps refuse to run until the QC worksheet is reviewed. |
 | `spectra` | `stat` | In-patch statistic to plot/compare (`median` or `mean`). |
+| `radiometry` | `earth_sun_normalize`, `e0_method` | Normalize L1B radiance to 1 AU at read time (removes the seasonal 1/d² solar-flux leak; on by default), and the `E0` provider (`table` ephemeris or `spencer` closed-form). Setting `earth_sun_normalize: false` writes the uncorrected derived products under a `variant_label` subfolder instead of overwriting the corrected baseline. |
 | `drift` | `alpha`, `n_bootstrap`, `seed` | Per-channel significance level (uncorrected bootstrap p); matched-pairs bootstrap iterations; RNG seed. |
 | `brdf` | `site_patches`, `exclude_sites`, `target_wl`, `min_scenes`, `n_bootstrap`, `per_site_boot`, `spectrum_n_boot`, `gamma_cap` | Pooled multi-site drift: the roster (one patch per PICS; `null` skips a site), excluded sites, single-channel wavelength, per-site scene floor, the three bootstrap counts, and the unstable-fit cap. Reuses `drift.alpha` + `qc.require_review`. |
 | `extract` | `cache_pixels`, `want_obs`, `filter_agg_flag`, `min_valid_frac` | Cache the raw pixel cube; stream OBS geometry; Aggregate-Flag screening + its threshold. |
@@ -103,6 +104,7 @@ You can always run the underlying scripts directly (e.g. `python scripts/run_del
 | `single_patch_cube_extract` | Unified per-acquisition extraction for one patch — open each granule once, mask once, derive all outputs, persist the raw pixel cube. |
 | `PICS_allpatches_cube_extract` | Batched extraction of every patch of one size — loop-inverted (open each granule once); reuses the single-patch derivations. |
 | `extract_patch_stats` | Low-level openers / windowing / per-channel statistics (shared helpers). |
+| `earth_sun` | Earth–Sun distance + eccentricity factor `E0` (ephemeris table or Spencer closed-form) for the read-time 1-AU radiance normalization. |
 | `id_matched_pairs` | Matched-pair detection and SZA/VZA-over-time plotting (pure). |
 | `qc_gate` | The manual QC gate: filter `keep=FALSE` scenes; `is_reviewed` / `apply_qc_filter`. |
 | `display_qc_visuals` / `qc_report` / `qc_review` | QC figure rendering, PDF orchestration, and the interactive keep/remove reviewer. |
@@ -128,7 +130,7 @@ Steps 1–2 are global to a PICS site; steps 3–6 are per-patch analyses branch
 
    **QC gate.** Enter keep/remove verdicts either interactively (**`run_qc_review.py`** / **`run_PICS_allpatches_qc_review.py`** — a matplotlib reviewer with mouse/keyboard verdicts written straight to `qc.csv`) or by hand (set `keep=FALSE` with a `reason`, then `reviewed=TRUE` in the top row). Verdicts are **opt-out** (default keep), preserved across re-runs, and gated: steps 5–6 refuse to run until `reviewed=TRUE` (unless `qc.require_review` is false).
 
-5. **`run_id_matched_pairs.py`** (batched: **`run_PICS_allpatches_id_matched_pairs.py`**) — Pure **local** post-processor: read the geometry table, **apply the QC gate**, then write the matched-pair CSV and the SZA/VZA-over-time figure. A matched pair is two acquisitions with \|ΔSZA\| ≤ `matching.sza_tol` and \|ΔVZA\| ≤ `matching.vza_tol`.
+5. **`run_id_matched_pairs.py`** (batched: **`run_PICS_allpatches_id_matched_pairs.py`**) — Pure **local** post-processor: read the geometry table, **apply the QC gate**, then write the matched-pair CSV and the SZA/VZA-over-time figure. A matched pair is two acquisitions with \|ΔSZA\| ≤ `matching.sza_tol`, \|ΔVZA\| ≤ `matching.vza_tol`, and at least `matching.min_pair_days` apart.
 
 6. **`run_delta_calculations.py`** (batched: **`run_PICS_allpatches_delta_calculations.py`**) — Join the matched-pairs CSV with the per-channel stats and write a tidy long CSV of the pairwise **t1→t2** percent change (median & mean, RFL + RAD) at every wavelength → `data/delta_r/per_patch/{site}_{patch}_delta.csv`. Scenes are aligned **by band order** (band *i* ↔ band *i*), not by exact wavelength — EMIT recalibrated its wavelengths mid-record (~0.09 nm shift between processing eras), so an exact match would silently drop cross-era pairs. `absorption_band_flag` marks deep water-vapor bands (where L2A reflectance is fill). Any pair that can't be formed is reported **loudly** and the run exits non-zero: *skipped* (missing radiance stats — re-run step 3) or *degenerate* (band grids don't correspond).
 
@@ -136,7 +138,7 @@ Steps 1–2 are global to a PICS site; steps 3–6 are per-patch analyses branch
 
 7. **`run_PICS_allpatches_aggregate_pairs.py`** — Pure **local** per-PICS step that removes the **pseudo-replication** in the drift fit (*option A*). The step-6 tables carry one row per `(patch × acquisition-pair × channel)`, so the *same* acquisition pair seen by many spatial-replicate patches would otherwise enter the fit as many near-identical points, artificially narrowing the uncertainty. Per channel, this collapses each unique acquisition pair's spatial replicates to a single ΔR — the **median across patches** — so every pair contributes exactly one point → `data/delta_r/aggregated/{site}_{size}_delta.csv`, plus diagnostics `n_patches` and across-patch spread (`*_std`/`*_min`/`*_max`).
 
-8. **`run_matched_pairs_drift_analysis.py`** — Pure **local** cross-PICS analysis: pool the aggregated delta CSVs of one patch size across all PICS and, per EMIT channel, fit the **drift rate** as the robust **Theil–Sen** slope of ΔR vs Δt (%/yr), with an uncorrected **Kendall-τ** p-value per channel and a secondary origin-forced (median-of-ratios) sensitivity estimate. Writes `data/drift/{size}_drift.csv`, `figures/matched_pairs/{size}_drift_spectrum.png` (drift vs wavelength, 95% CI whiskers, raw-significance colouring), and one two-panel ΔR-vs-Δt scatter per channel. `drift.use_aggregated=false` fits the raw per-patch deltas instead (pseudo-replicated). Water-vapor absorption bands are excluded from both products (shaded gaps).
+8. **`run_matched_pairs_drift_analysis.py`** — Pure **local** cross-PICS analysis: pool the aggregated delta CSVs of one patch size across all PICS and, per EMIT channel, fit the **drift rate** with a **PICS-stratified matched-pairs bootstrap**. The point estimate is the robust **Theil–Sen** slope of ΔR vs Δt (%/yr) on one representative ΔR per pair; the 95% CI and two-sided p-value come from resampling the matched pairs with replacement, stratified by PICS (`drift.n_bootstrap` resamples, `drift.seed`). Writes `data/drift/{size}_mp_drift.csv`, `figures/matched_pairs/{size}_mp_drift_spectrum.png` (drift vs wavelength, 95% CI whiskers, raw-significance colouring), and one two-panel ΔR-vs-Δt scatter per channel. Water-vapor absorption bands are excluded from the fit (shaded gaps).
 
 **Optional:** `run_export_pics_gpkg.py` regenerates `data/ROIs/northafrican_pics.gpkg` from `config/sites.yaml` for QGIS. It is a *derived* output (gitignored), never a pipeline input.
 
