@@ -176,25 +176,19 @@ def _load_coverage_single(cfg, *, highlight="Libya 4", coverage_product="rfl"):
             f"{highlight} patches from {bnds.name}")
 
 
-def _load_study_overview(cfg):
-    """Early-results 5×3 overview: per-PICS coverage grid, matched-pairs grid, BRDF dates.
+def _load_temporal_coverage(cfg):
+    """Per-PICS temporal coverage: matched-pair SZA-vs-time + BRDF scene dates.
 
-    Assembles, for each study PICS (fixed display order): its patch grid tagged with
-    per-patch L2A scene coverage (``_cov``) and per-patch matched-pairs count
-    (``_pairs``, from the analysis's per-patch delta tables), the PICS boundary, the
-    QC-reviewed BRDF scene dates (from ``brdf_design.csv``), and the per-PICS total /
-    unique matched-pair counts.
+    For each study PICS (fixed display order) assembles its **unique** matched pairs
+    from the aggregated delta table (``data/delta_r/aggregated/{site}_{size}_delta.csv``
+    — one row per unique acquisition pair per band, deduped to one row per pair) with
+    each pair's two scene dates and in-patch mean SZAs, plus the QC-retained BRDF
+    joint-fit scene dates from ``brdf_design.csv``. No recompute — both are read
+    straight from pipeline outputs.
     """
-    from emit_pics.id_granules import load_patches
-    from emit_pics.config import pics_geodataframe
-    from emit_pics.matched_pairs_drift_analysis import load_delta_tables
-    order = ["Libya_4", "Libya_1", "Algeria_3", "Algeria_5", "Mauritania_1"]
+    from emit_pics.config import canonical_token
+    order = ["Libya_1", "Libya_4", "Algeria_3", "Algeria_5", "Mauritania_1"]
 
-    df = load_delta_tables(paths.DELTA_PER_PATCH_DIR, cfg.patch_size)
-    if df.empty:
-        return None, "no per-patch delta tables — run the matched-pairs analysis first."
-    b0 = df["band_index"].iloc[0]
-    one = df[df["band_index"] == b0]                     # one row per (patch, pair)
     des_path = paths.brdf_design()
     if not des_path.exists():
         return None, f"{des_path.name} not found — run scripts/run_brdf_assemble.py first."
@@ -202,24 +196,22 @@ def _load_study_overview(cfg):
 
     sites_data = []
     for s in order:
-        bnds = paths.patch_bnds(s)
-        if not bnds.exists():
-            return None, f"missing patch bounds for {s} ({bnds.name})."
-        pat = load_patches(bnds, cfg.search_patch_size_km).copy()
-        pat["_cov"] = pat["n_gran_ovlp_rfl"].fillna(0).astype(int)
-        per_patch = one[one["PICS_ID"] == s].groupby("patch_id").size()
-        pat["_pairs"] = pat["patch_id"].astype(str).map(per_patch).fillna(0).astype(int)
-        sub = one[one["PICS_ID"] == s]
+        tok = canonical_token(s)
+        agg = paths.delta_aggregated(s, cfg.patch_size)
+        if not agg.exists():
+            return None, (f"{agg.name} not found — run the matched-pairs analysis "
+                          "(aggregate step) first.")
+        d = pd.read_csv(agg, parse_dates=["t1_dt", "t2_dt"])
+        pairs = d.drop_duplicates("pair_id")[["t1_dt", "t2_dt", "SZA_t1", "SZA_t2"]]
         sites_data.append({
             "name": s.replace("_", " "),
-            "patches": pat,
-            "boundary": pics_geodataframe(s),
-            "dates": des.loc[des["site"] == s, "datetime"].sort_values().to_numpy(),
-            "total_pairs": int(len(sub)),
-            "unique_pairs": int(sub["pair_id"].nunique()),
-            "n_brdf": int((des["site"] == s).sum()),
+            "site": tok,
+            "pairs": pairs.reset_index(drop=True),
+            "dates": des.loc[des["site"] == tok, "datetime"].sort_values().to_numpy(),
+            "n_pairs": int(len(pairs)),
+            "n_brdf": int((des["site"] == tok).sum()),
         })
-    return {"sites_data": sites_data}, f"{len(sites_data)} PICS early-results overview"
+    return {"sites_data": sites_data}, f"{len(sites_data)} PICS temporal coverage"
 
 
 #: figure key -> {name (output stem; ``{wl}`` filled from brdf.target_wl), loader,
@@ -251,9 +243,9 @@ FIGURES = {
     "site_mean_spectra": {"name": "meanspectra_byPICS",
                           "load": _load_brdf_site_spectra,
                           "build": figures.brdf_site_mean_spectra},
-    "study_overview_grid": {"name": "earlyresults_overview",
-                            "load": _load_study_overview,
-                            "build": figures.study_overview_grid},
+    "temporal_coverage": {"name": "temporal_coverage",
+                          "load": _load_temporal_coverage,
+                          "build": figures.temporal_coverage},
 }
 
 

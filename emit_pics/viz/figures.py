@@ -440,6 +440,12 @@ def brdf_single_channel(joint, boots, T0, *, target_wl=None,
                                   figsize=style.figsize(size, aspect),
                                   layout="constrained")
 
+    # Product identifiers (in-panel, top-right) and y-axis labels: radiance uses the
+    # radiance symbol L, reflectance uses rho. Reused for the bootstrap legend below.
+    PROD_LABEL = {"rad": r"Radiance, $L$", "rfl": r"Reflectance, $\rho$"}
+    YLAB = {"rad": r"$L\,/\,(\alpha_s + \beta_s\,\cos\theta)$",
+            "rfl": r"$\rho\,/\,(\alpha_s + \beta_s\,\cos\theta)$"}
+
     # Top row: per-site corrected collapse onto the shared drift line.
     for key in ("rad", "rfl"):
         ax = axd[key]
@@ -462,22 +468,30 @@ def brdf_single_channel(joint, boots, T0, *, target_wl=None,
                 family="monospace", zorder=6,
                 bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9))
         ax.set_xlabel(f"t (yr since {T0.date()})")
-        ax.set_title(f"{key.upper()} — corrected")
-    axd["rad"].set_ylabel(r"$\rho\,/\,(\alpha_s + \beta_s\,\cos\theta)$")
+        ax.set_ylabel(YLAB[key])
+        # In-panel product label at top-right, replacing the old axes title.
+        ax.text(0.97, 0.97, PROD_LABEL[key], transform=ax.transAxes, va="top",
+                ha="right", fontsize=8 * sc, fontweight="bold", zorder=6,
+                bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9))
 
-    # One shared PICS colour/marker legend, in the radiance panel.
+    # One shared PICS colour/marker legend, in the radiance panel. Kept at upper-left
+    # so it clears the new top-right product label.
     site_handles = [Line2D([], [], marker=styles[s]["marker"], color=styles[s]["color"],
                            ls="", markeredgecolor="k", markersize=5 * sc,
                            label=str(s).replace("_", " ")) for s in all_sites]
-    axd["rad"].legend(handles=site_handles, loc="upper right", ncol=1,
+    axd["rad"].legend(handles=site_handles, loc="upper left", ncol=1,
                       fontsize=6.5 * sc, frameon=True, framealpha=0.9, edgecolor="0.7")
 
-    # Bottom row: pooled shared-γ bootstrap, both products overlaid.
+    # Bottom row: pooled shared-γ bootstrap, both products overlaid. Colour is
+    # colour-blind-safe (Wong blue vs green); a distinct hatch + black outline per
+    # product adds a redundant, greyscale-safe cue where the two histograms overlap.
     axb = axd["boot"]
+    hatches = {"rad": "///", "rfl": "\\\\"}
     for p in ("rad", "rfl"):
         pc = style.PRODUCT_STYLE[p]
-        axb.hist(100 * boots[p]["draws"], bins=40, color=pc["color"], alpha=0.55,
-                 label=p.upper())
+        axb.hist(100 * boots[p]["draws"], bins=40, color=pc["color"], alpha=0.5,
+                 edgecolor="k", linewidth=0.5 * sc, hatch=hatches[p],
+                 label=PROD_LABEL[p])
         axb.axvline(100 * joint[p]["gamma"], color=pc["color"], lw=1.4 * sc, zorder=4)
     axb.axvline(0.0, color="k", lw=0.8 * sc, ls="--", zorder=3)
     axb.set_xlabel("Shared drift γ (%/yr)")
@@ -773,87 +787,116 @@ def _grid_on_ax(ax, patches, boundary, valcol, norm, cmap, sc):
     ax.axis("off")
 
 
-def study_overview_grid(sites_data, *, fig_w=6.5, fig_h=7.8,
-                        cov_cmap="viridis_r", pair_cmap="magma_r",
-                        headers=("Total scenes", "Matched pairs", "BRDF time series")):
-    """5-PICS × 3-panel early-results overview (one row per PICS).
+def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
+                      headers=("Matched pairs coverage", "BRDF time series")):
+    """Per-PICS temporal coverage: matched pairs (SZA vs time) + BRDF scene rug.
 
-    Column 1 = per-patch scene-coverage grid (L2A), column 2 = the same grid coloured
-    by matched-pairs-per-patch (with per-PICS total Σ and unique-pair counts beneath),
-    column 3 = a shared-timeline stem plot of the QC-reviewed BRDF scene dates. PICS
-    names are rotated on the left; a shared colour scale spans each grid column.
+    One row per PICS, two columns on a shared time axis:
+
+    * **left** — the site's unique matched pairs. Each pair is two scenes plotted at
+      their acquisition date (x) and in-patch mean SZA (y), joined by a near-horizontal
+      segment (the pair is SZA-matched, so the connector is nearly flat but spans the
+      time gap that carries the drift signal).
+    * **right** — a rug/eventplot of the QC-retained BRDF joint-fit scenes: one
+      vertical tick per scene at its date (no meaningful y-axis).
+
+    Every PICS is drawn in its stable Wong colour (:func:`style.site_styles`), so the
+    rows match the other publication figures. Both columns share one time range (a
+    scene lines up vertically across columns); all left panels share one SZA range.
+    Only the bottom row carries date labels and only the left column carries SZA ticks.
 
     Parameters
     ----------
     sites_data : list of dict
-        One per PICS, in display order, each with: ``name`` (str), ``patches``
-        (GeoDataFrame carrying int ``_cov`` and ``_pairs`` columns), ``boundary``
-        (GeoDataFrame), ``dates`` (datetime array), ``total_pairs`` / ``unique_pairs``
-        (int), and ``n_brdf`` (int).
+        One per PICS, in display order, each with: ``name`` (str display label),
+        ``site`` (canonical token, for the colour map), ``pairs`` (DataFrame with
+        ``t1_dt``, ``t2_dt``, ``SZA_t1``, ``SZA_t2`` — one row per unique matched
+        pair), ``dates`` (datetime array of BRDF scenes), and the counts ``n_pairs``
+        / ``n_brdf``.
     fig_w, fig_h : float
-        Figure size in inches (RSE: ≤6.5 wide, ≤8 tall).
+        Figure size in inches (fixed to the publication spec; default 6.5 × 6.0).
+    headers : tuple
+        The two column titles, drawn over the top row.
     """
     import matplotlib.dates as mdates
     from matplotlib.gridspec import GridSpec
+    from matplotlib.ticker import MaxNLocator
     sc = style.scale()
     n = len(sites_data)
+    styles = style.site_styles([s["site"] for s in sites_data])
 
-    cov_max = max(1, max(int(s["patches"]["_cov"].max()) for s in sites_data))
-    pair_max = max(1, max(int(s["patches"]["_pairs"].max()) for s in sites_data))
-    cov_norm = mpl.colors.Normalize(0, cov_max)
-    pair_norm = mpl.colors.Normalize(0, pair_max)
-    d0 = min(pd.Timestamp(s["dates"].min()) for s in sites_data)
-    d1 = max(pd.Timestamp(s["dates"].max()) for s in sites_data)
-    pad = (d1 - d0) * 0.03
-    d0, d1 = d0 - pad, d1 + pad
+    # Shared time range across BOTH columns (pair endpoints + BRDF scene dates), so a
+    # scene aligns vertically between the two panels of every row.
+    all_dates = []
+    for s in sites_data:
+        p = s["pairs"]
+        all_dates += list(pd.to_datetime(p["t1_dt"])) + list(pd.to_datetime(p["t2_dt"]))
+        all_dates += list(pd.to_datetime(s["dates"]))
+    d0, d1 = min(all_dates), max(all_dates)
+    dpad = (d1 - d0) * 0.03
+    d0, d1 = d0 - dpad, d1 + dpad
+
+    # Shared SZA range across all matched-pairs panels.
+    all_sza = np.concatenate([
+        np.r_[s["pairs"]["SZA_t1"].to_numpy(float), s["pairs"]["SZA_t2"].to_numpy(float)]
+        for s in sites_data if len(s["pairs"])])
+    slo, shi = float(np.nanmin(all_sza)), float(np.nanmax(all_sza))
+    spad = 0.10 * (shi - slo) if shi > slo else 2.0
+    slo, shi = slo - spad, shi + spad
 
     fig = plt.figure(figsize=(fig_w, fig_h))
-    gs = GridSpec(n, 3, figure=fig, left=0.075, right=0.995, top=0.935, bottom=0.10,
-                  wspace=0.14, hspace=0.30)
+    gs = GridSpec(n, 2, figure=fig, left=0.135, right=0.99, top=0.945, bottom=0.055,
+                  wspace=0.06, hspace=0.16, width_ratios=[1.0, 1.0])
+    axes = [[fig.add_subplot(gs[i, j]) for j in range(2)] for i in range(n)]
 
-    axes = [[fig.add_subplot(gs[i, j]) for j in range(3)] for i in range(n)]
     for i, s in enumerate(sites_data):
-        ax_cov, ax_pair, ax_ts = axes[i]
-        _grid_on_ax(ax_cov, s["patches"], s["boundary"], "_cov", cov_norm, cov_cmap, sc)
-        _grid_on_ax(ax_pair, s["patches"], s["boundary"], "_pairs", pair_norm, pair_cmap, sc)
-        # per-PICS pair totals under the matched-pairs grid
-        ax_pair.text(0.5, -0.02, f"total {s['total_pairs']}   unique {s['unique_pairs']}",
-                     transform=ax_pair.transAxes, ha="center", va="top",
-                     fontsize=6.2 * sc)
-        # BRDF scene stem plot on the shared timeline
-        dates = pd.to_datetime(s["dates"])
-        ax_ts.vlines(dates, 0, 1, color="#0072B2", linewidth=0.8 * sc)
-        ax_ts.set_xlim(d0, d1); ax_ts.set_ylim(0, 1.15)
+        c = styles[s["site"]]["color"]
+        ax_mp, ax_ts = axes[i]
+        p = s["pairs"]
+        t1 = pd.to_datetime(p["t1_dt"]); t2 = pd.to_datetime(p["t2_dt"])
+        y1 = p["SZA_t1"].to_numpy(float); y2 = p["SZA_t2"].to_numpy(float)
+
+        # Matched-pairs panel: a connector per pair + a marker at each scene endpoint.
+        for a, b, ya, yb in zip(t1, t2, y1, y2):
+            ax_mp.plot([a, b], [ya, yb], color=c, lw=0.7 * sc, alpha=0.55,
+                       solid_capstyle="round", zorder=2)
+        ax_mp.scatter(np.r_[t1.values, t2.values], np.r_[y1, y2], s=7 * sc, color=c,
+                      edgecolors="white", linewidths=0.3 * sc, zorder=3)
+        ax_mp.set_ylim(slo, shi)
+        ax_mp.yaxis.set_major_locator(MaxNLocator(3))
+        ax_mp.tick_params(axis="y", labelsize=7 * sc, length=2 * sc)
+        ax_mp.text(0.015, 0.94, f"{s['n_pairs']} pairs", transform=ax_mp.transAxes,
+                   ha="left", va="top", fontsize=6.2 * sc, color="0.35",
+                   path_effects=_halo(1.4 * sc))
+
+        # BRDF panel: a rug of retained-scene dates; no meaningful y-axis.
+        ax_ts.vlines(pd.to_datetime(s["dates"]), 0, 1, color=c, lw=0.9 * sc)
+        ax_ts.set_ylim(0, 1)
         ax_ts.set_yticks([])
         for sp in ("left", "right", "top"):
             ax_ts.spines[sp].set_visible(False)
-        ax_ts.text(0.985, 0.98, f"n={s['n_brdf']}", transform=ax_ts.transAxes,
-                   ha="right", va="top", fontsize=6.2 * sc, color="0.35")
-        if i == n - 1:
-            ax_ts.xaxis.set_major_locator(mdates.YearLocator())
-            ax_ts.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-            ax_ts.tick_params(axis="x", labelsize=6.5 * sc, length=2 * sc)
-        else:
-            ax_ts.set_xticks([])
-        # rotated PICS name to the left of the row
-        ax_cov.annotate(s["name"], xy=(-0.12, 0.5), xycoords="axes fraction",
-                        rotation=90, ha="center", va="center",
-                        fontsize=8 * sc, fontweight="bold")
+        ax_ts.text(0.985, 0.94, f"n = {s['n_brdf']}", transform=ax_ts.transAxes,
+                   ha="right", va="top", fontsize=6.2 * sc, color="0.35",
+                   path_effects=_halo(1.4 * sc))
 
-    # column headers (over the top row)
-    for j, h in enumerate(headers):
-        axes[0][j].set_title(h, fontsize=8.5 * sc, fontweight="bold", pad=4 * sc)
+        # Shared time axis on both panels; label years on the bottom row only.
+        for ax in (ax_mp, ax_ts):
+            ax.set_xlim(d0, d1)
+            ax.xaxis.set_major_locator(mdates.YearLocator())
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+            ax.tick_params(axis="x", labelbottom=(i == n - 1),
+                           labelsize=7 * sc, length=2 * sc)
 
-    # one shared horizontal colourbar under each grid column
-    for j, (norm, cmap, lab) in enumerate([
-            (cov_norm, cov_cmap, "scenes / patch (L2A coverage)"),
-            (pair_norm, pair_cmap, "matched pairs / patch")]):
-        p = axes[-1][j].get_position()
-        cax = fig.add_axes([p.x0, 0.045, p.width, 0.012])
-        cb = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax,
-                          orientation="horizontal")
-        cb.set_label(lab, fontsize=6.3 * sc)
-        cb.ax.tick_params(labelsize=6 * sc, length=2 * sc)
+        # Rotated PICS name identifying the row (black; only the data is coloured).
+        ax_mp.annotate(s["name"], xy=(-0.15, 0.5), xycoords="axes fraction",
+                       rotation=90, ha="center", va="center",
+                       fontsize=8 * sc, fontweight="bold", color="black")
+
+    axes[0][0].set_title(headers[0], fontsize=8.5 * sc, fontweight="bold", pad=4 * sc)
+    axes[0][1].set_title(headers[1], fontsize=8.5 * sc, fontweight="bold", pad=4 * sc)
+    # One shared SZA label at the far-left edge (the row names sit between it and the
+    # ticks). The time axis needs no label — years on the bottom row make it obvious.
+    fig.supylabel("Mean SZA (°)", fontsize=8 * sc, x=0.008)
     return fig
 
 
