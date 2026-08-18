@@ -49,4 +49,17 @@ desktop.ini
 
 # Misc
 *.log
-.claude/ 
+.claude/
+
+# Local-only working files — kept on disk, deliberately not in the public repo.
+from_evan/
+docs/IMPROVEMENT_PLAN.md
+docs/BRDF_INTEGRATION_PLAN.md
+notebooks/BRDF_drift_workflow_Libya4_10_7_1.ipynb
+notebooks/BRDF_drift_workflow_allPICS.ipynb
+notebooks/NC_to_GeoTIFF.ipynb
+notebooks/matched_pairs_single_vs_fullPICS.ipynb
+notebooks/patch_generator.ipynb
+notebooks/simple_linear_BRDF.ipynb
+notebooks/sza_leak_diagnostic.ipynb
+notebooks/wavelength_drift.ipynb
