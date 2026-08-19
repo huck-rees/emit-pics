@@ -347,8 +347,8 @@ def cos_sza_time_corr(obs, corr, *, T0=None, size="double", aspect=0.62, ncol=3,
                    marker=st["marker"], edgecolors="k", linewidths=0.3 * sc,
                    alpha=0.85, zorder=3)
         rho, p = stats.get(s, (np.nan, np.nan))
-        ax.text(0.04, 0.96, f"$\\rho$ = {rho:+.2f}\n$p$ = {p:.2f}",
-                transform=ax.transAxes, va="top", ha="left",
+        ax.text(0.96, 0.04, f"$\\rho$ = {rho:+.2f}\n$p$ = {p:.2f}",
+                transform=ax.transAxes, va="bottom", ha="right",
                 fontsize=7 * sc, family="monospace", zorder=6)
         ax.set_title(str(s).replace("_", " "), fontsize=8 * sc)
 
