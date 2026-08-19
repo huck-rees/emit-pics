@@ -133,6 +133,26 @@ def _load_brdf_site_spectra(cfg):
     return {"spectra": spectra}, f"{len(spectra)} PICS mean spectra{tail}"
 
 
+def _load_cos_sza_corr(cfg):
+    """Per-scene cos(theta)/t and per-site Spearman corr for the cos-SZA-vs-time figure.
+
+    Assembles the same pooled design table the BRDF drift fit uses
+    (:func:`emit_pics.brdf_drift.assemble_design`), then computes the within-site
+    Spearman correlation between ``cos(SZA)`` and ``t`` via
+    :func:`emit_pics.cos_sza_corr.site_cos_sza_time_corr`.
+    """
+    from emit_pics import brdf_drift, cos_sza_corr
+    roster, _, _ = brdf_drift.resolve_roster(cfg)
+    if not roster:
+        return None, "no BRDF roster (brdf.site_patches empty)."
+    obs, _, T0, notes = brdf_drift.assemble_design(roster, cfg)
+    if obs is None or obs.empty:
+        why = "; ".join(f"{n['site']}: {n['note']}" for n in notes if not n["kept"])
+        return None, f"no usable PICS ({why})."
+    corr = cos_sza_corr.site_cos_sza_time_corr(obs)
+    return {"obs": obs, "corr": corr, "T0": T0}, f"{len(corr)} PICS cos-SZA/time corr"
+
+
 def _study_sites(cfg):
     """The study PICS as a GeoDataFrame of ROI boxes, plus a provenance note.
 
@@ -246,6 +266,9 @@ FIGURES = {
     "temporal_coverage": {"name": "temporal_coverage",
                           "load": _load_temporal_coverage,
                           "build": figures.temporal_coverage},
+    "cos_sza_time_corr": {"name": "cos_sza_time_corr",
+                          "load": _load_cos_sza_corr,
+                          "build": figures.cos_sza_time_corr},
 }
 
 

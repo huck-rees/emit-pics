@@ -186,8 +186,9 @@ def brdf_site_mean_spectra(spectra, *, size="double", aspect=0.9,
     "mean_rfl", "n", "patch"}}``. Each PICS is a single line — the mean over that
     representative patch's QC-surviving scenes — drawn in its stable Wong colour
     (:func:`style.site_styles`) plus a cycled line style for greyscale safety.
-    Radiance is continuous; reflectance breaks across the deep water-vapor bands
-    (NaN where L2A is fill). The legend carries each PICS's scene count ``n``.
+    Both lines break across the deep water-vapor bands — reflectance because L2A
+    is fill there, radiance to match, so both panels exclude the SAME channels the
+    drift figures do. The legend carries each PICS's scene count ``n``.
 
     Parameters
     ----------
@@ -211,14 +212,13 @@ def brdf_site_mean_spectra(spectra, *, size="double", aspect=0.9,
         for i, s in enumerate(sites):
             d = spectra[s]
             y = np.asarray(d[key], float).copy()
-            # Reflectance retrieval is fill/unreliable in the deep water-vapor
-            # windows (nonphysical band-edge spikes), so break the reflectance line
-            # across the SAME canonical bands the drift analyses exclude. Radiance
-            # is physical everywhere and is left continuous.
-            if key == "mean_rfl":
-                wl = np.asarray(d["wl"], float)
-                for lo, hi in ABSORPTION_BANDS_NM:
-                    y[(wl >= lo) & (wl <= hi)] = np.nan
+            # Break BOTH lines across the deep water-vapor windows. Reflectance
+            # retrieval is fill/unreliable there; radiance is physical but a small
+            # residual we omit anyway so the two panels exclude the SAME channels
+            # the drift analyses do (matching the drift-spectrum figures).
+            wl = np.asarray(d["wl"], float)
+            for lo, hi in ABSORPTION_BANDS_NM:
+                y[(wl >= lo) & (wl <= hi)] = np.nan
             ax.plot(d["wl"], y, color=styles[s]["color"],
                     ls=_SPECTRA_LS[i % len(_SPECTRA_LS)], lw=1.0 * sc, alpha=0.9)
         ax.set_ylabel(ylab)
@@ -295,6 +295,83 @@ def persite_gamma_spectrum(persite_spec, *, size="double", aspect=0.75, ylim=Non
                    columnspacing=1.0, handletextpad=0.3)
     if style.show_title():
         axes[0].set_title(title)
+    return fig
+
+
+def cos_sza_time_corr(obs, corr, *, T0=None, size="double", aspect=0.62, ncol=3,
+                      title="Solar geometry vs time by PICS"):
+    """Per-site scatter of ``cos(theta)`` against ``t``, with Spearman rho / p.
+
+    One panel per PICS laid out in two rows (:data:`ncol` columns; the trailing
+    unused cell is blanked). Each scene is drawn in that site's stable Wong colour
+    **and** marker (:func:`style.site_styles`, edged black) — the SAME colour/marker
+    identity as the single-channel BRDF figure. The site's Spearman rank
+    correlation between ``cos(SZA)`` and ``t`` and its p-value are printed inside
+    the panel with **no** bounding box or background. No trend line is drawn (the
+    statistic is rank-based). Panels share both axes so the sites are directly
+    comparable.
+
+    Parameters
+    ----------
+    obs : pandas.DataFrame
+        Pooled per-scene design table with ``site``, ``g`` (= ``cos(SZA)``), and
+        ``t`` (years since *T0*).
+    corr : pandas.DataFrame
+        Per-site Spearman table from
+        :func:`emit_pics.cos_sza_corr.site_cos_sza_time_corr`
+        (columns ``site``, ``spearman_rho``, ``p_value``).
+    T0 : pandas.Timestamp or None
+        Common time origin, for the x-axis label.
+    size, aspect : str, float
+        Theme width class and height/width.
+    ncol : int
+        Panel columns (default 3 → a 2×3 grid for five sites).
+    title : str
+        On-figure suptitle (slide theme only; the manuscript caption is in LaTeX).
+    """
+    sc = style.scale()
+    sites = sorted(obs["site"].unique())
+    styles = style.site_styles(sites)
+    stats = {r["site"]: (r["spearman_rho"], r["p_value"]) for _, r in corr.iterrows()}
+
+    nrow = int(np.ceil(len(sites) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=style.figsize(size, aspect),
+                             sharex=True, sharey=True, squeeze=False,
+                             layout="constrained")
+
+    for k, s in enumerate(sites):
+        ax = axes.flat[k]
+        sub = obs[obs["site"] == s]
+        st = styles[s]
+        ax.scatter(sub["t"], sub["g"], s=16 * sc, color=st["color"],
+                   marker=st["marker"], edgecolors="k", linewidths=0.3 * sc,
+                   alpha=0.85, zorder=3)
+        rho, p = stats.get(s, (np.nan, np.nan))
+        ax.text(0.04, 0.96, f"$\\rho$ = {rho:+.2f}\n$p$ = {p:.2f}",
+                transform=ax.transAxes, va="top", ha="left",
+                fontsize=7 * sc, family="monospace", zorder=6)
+        ax.set_title(str(s).replace("_", " "), fontsize=8 * sc)
+
+    for k in range(len(sites), nrow * ncol):     # blank the trailing unused cell(s)
+        axes.flat[k].set_axis_off()
+
+    # x-label only on the lowest filled panel of each column (so the panel above a
+    # blanked cell still gets its ticks + label); y-label only on the left column.
+    xlab = f"t (yr since {T0.date()})" if T0 is not None else "t (yr)"
+    for c in range(ncol):
+        rows = [r for r in range(nrow) if r * ncol + c < len(sites)]
+        if not rows:
+            continue
+        br = max(rows)
+        for r in rows:
+            axes[r, c].tick_params(labelbottom=(r == br))
+        axes[br, c].set_xlabel(xlab)
+    for r in range(nrow):
+        if r * ncol < len(sites):
+            axes[r, 0].set_ylabel(r"$\cos\,\theta$")
+
+    if style.show_title():
+        fig.suptitle(title)
     return fig
 
 
