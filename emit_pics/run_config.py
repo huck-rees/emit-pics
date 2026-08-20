@@ -74,6 +74,10 @@ class RunConfig:
     brdf_per_site_boot: int = 500
     brdf_spectrum_n_boot: int = 300
     brdf_gamma_cap: float = 500.0
+    # --- temporal jackknife (leave-one-epoch-out; reuses brdf spectrum knobs) ---
+    #: "equal_count" (n contiguous equal-size blocks) or "calendar_year".
+    jackknife_block_scheme: str = "equal_count"
+    jackknife_n_blocks: int = 5
     # --- extraction ---
     cache_pixels: bool = True
     want_obs: bool = True
@@ -124,6 +128,7 @@ def load_config(path=None) -> RunConfig:
     qc, spectra, drift = sec("qc"), sec("spectra"), sec("drift")
     extract, gs, pg = sec("extract"), sec("granule_search"), sec("patch_gen")
     brdf, radiometry = sec("brdf"), sec("radiometry")
+    jackknife = sec("jackknife")
 
     # BRDF roster: keep only sites with a patch id set (drop null/blank entries).
     brdf_site_patches = {str(s): str(p) for s, p in (brdf.get("site_patches") or {}).items()
@@ -163,6 +168,8 @@ def load_config(path=None) -> RunConfig:
         brdf_per_site_boot=int(brdf.get("per_site_boot", 500)),
         brdf_spectrum_n_boot=int(brdf.get("spectrum_n_boot", 300)),
         brdf_gamma_cap=float(brdf.get("gamma_cap", 500.0)),
+        jackknife_block_scheme=str(jackknife.get("block_scheme", "equal_count")),
+        jackknife_n_blocks=int(jackknife.get("n_blocks", 5)),
         cache_pixels=bool(extract.get("cache_pixels", True)),
         want_obs=bool(extract.get("want_obs", True)),
         filter_agg_flag=bool(extract.get("filter_agg_flag", False)),

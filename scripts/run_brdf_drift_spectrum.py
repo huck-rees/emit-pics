@@ -168,11 +168,16 @@ def main() -> None:
                 print(f"  {prod}: channel {j + 1}/{len(fit_bands)} ({wlgrid[b]:.0f} nm)")
     spectrum = pd.DataFrame(rows)
 
-    # 4. Significance: uncorrected per-channel bootstrap p-value.
-    spectrum["sig_raw"] = spectrum["p_value"] <= ALPHA
+    # 4. Significance: the 95% bootstrap CI excludes zero. This is the inversion of
+    #    the percentile bootstrap test (CI-vs-test duality) and, crucially, matches
+    #    the plotted whiskers exactly, so a channel is coloured significant iff its
+    #    drawn 95% CI clears zero. (The two-sided bootstrap ``p_value`` column is kept
+    #    for reference; it is slightly more conservative because of its +1 continuity
+    #    correction, so it is NOT used for the significance flag.)
+    spectrum["sig_raw"] = (spectrum["ci_lo_pct_yr"] > 0) | (spectrum["ci_hi_pct_yr"] < 0)
     for prod in PRODUCTS:
         m = (spectrum["product"] == prod).to_numpy()
-        print(f"{prod}: significant p<{ALPHA}: "
+        print(f"{prod}: significant (95% CI excludes 0): "
               f"{int(spectrum.loc[m, 'sig_raw'].sum())}   (of {int(m.sum())} channels)")
 
     # 5. Flag numerically unstable channels (near-zero baseline -> gamma explodes).

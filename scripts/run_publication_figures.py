@@ -223,13 +223,16 @@ def _load_temporal_coverage(cfg):
                           "(aggregate step) first.")
         d = pd.read_csv(agg, parse_dates=["t1_dt", "t2_dt"])
         pairs = d.drop_duplicates("pair_id")[["t1_dt", "t2_dt", "SZA_t1", "SZA_t2"]]
+        brdf = (des.loc[des["site"] == tok, ["datetime", "sza_mean"]]
+                .sort_values("datetime"))
         sites_data.append({
             "name": s.replace("_", " "),
             "site": tok,
             "pairs": pairs.reset_index(drop=True),
-            "dates": des.loc[des["site"] == tok, "datetime"].sort_values().to_numpy(),
+            "dates": brdf["datetime"].to_numpy(),
+            "sza": brdf["sza_mean"].to_numpy(float),
             "n_pairs": int(len(pairs)),
-            "n_brdf": int((des["site"] == tok).sum()),
+            "n_brdf": int(len(brdf)),
         })
     return {"sites_data": sites_data}, f"{len(sites_data)} PICS temporal coverage"
 
@@ -254,7 +257,7 @@ FIGURES = {
                           "load": _load_mp_drift_spectrum,
                           "build": figures.drift_spectrum,
                           "kwargs": {"sig_col": "sig_raw",
-                                     "sig_label": "significant (p < 0.05)",
+                                     "sig_label": "significant (95% CI excludes 0)",
                                      "ylim": (-5.0, 5.0),
                                      "title": "EMIT matched-pairs radiometric drift spectrum"}},
     "brdf_single_channel": {"name": "brdf_singlechannel_{wl}nm",

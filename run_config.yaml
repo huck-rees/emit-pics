@@ -75,6 +75,11 @@ brdf:
   spectrum_n_boot: 300     # per-channel resamples for the gamma(lambda) spectrum (§8)
   gamma_cap: 500.0         # %/yr; |gamma| or CI half-width beyond this = degenerate fit
 
+# --- temporal jackknife (leave-one-epoch-out; reuses brdf.spectrum_n_boot / gamma_cap) ---
+jackknife:
+  block_scheme: equal_count   # equal_count (n contiguous equal-size blocks) | calendar_year
+  n_blocks: 5
+
 # --- pixel extraction ---
 extract:
   cache_pixels: true

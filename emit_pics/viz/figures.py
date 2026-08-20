@@ -19,14 +19,14 @@ from emit_pics.viz import style
 
 
 def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_raw",
-                   sig_label="significant (p < 0.05)",
+                   sig_label="significant (95% CI excludes 0)", corner_label=None,
                    ylim=(-2.5, 2.5), title="EMIT pooled radiometric drift spectrum"):
     """BRDF pooled drift spectrum gamma(lambda): rad (top) / rfl (bottom) vs wavelength.
 
     Reads ``data/brdf/brdf_drift_spectrum.csv``. Numerically unstable channels are
     dropped; the bootstrap 95% CI is drawn as whiskers, and channels significant
-    by *sig_col* (the uncorrected per-channel p-value) are filled in the
-    significance colour while the rest are open grey.
+    by *sig_col* (the 95% CI excludes zero — i.e. the drawn whisker clears zero)
+    are filled in the significance colour while the rest are open grey.
 
     Parameters
     ----------
@@ -41,6 +41,11 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_raw",
         ``raw_significant`` for the matched-pairs table).
     sig_label : str
         Legend label for the filled significant points (match it to *sig_col*).
+    corner_label : str or None
+        If given, drawn bold in the top-left of the radiance (top) panel — used by
+        the leave-one-out appendix to tag each panel with its site combo (e.g.
+        ``"A3, A5, L1, L4"``). ``None`` (the default) leaves the primary figure
+        untouched.
     ylim : tuple or None
         Shared y-axis limits (%/yr) for both panels; ``None`` autoscales. Points
         or CI whiskers outside the range are clipped to the fixed scale.
@@ -85,6 +90,10 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_raw",
     # Semi-transparent box, top-left of the reflectance (bottom) panel.
     axes[1].legend(handles=handles, loc="upper left", frameon=True,
                    framealpha=0.8, edgecolor="0.7")
+    if corner_label:
+        axes[0].text(0.02, 0.94, corner_label, transform=axes[0].transAxes,
+                     va="top", ha="left", fontsize=8 * sc, fontweight="bold",
+                     zorder=6)
     if style.show_title():
         axes[0].set_title(title)
     return fig
@@ -293,6 +302,148 @@ def persite_gamma_spectrum(persite_spec, *, size="double", aspect=0.75, ylim=Non
     axes[0].legend(handles=handles, loc="upper left", frameon=True,
                    framealpha=0.85, edgecolor="0.7", ncol=len(sites),
                    columnspacing=1.0, handletextpad=0.3)
+    if style.show_title():
+        axes[0].set_title(title)
+    return fig
+
+
+def loo_gamma_overlay(df, *, size="double", aspect=0.75, ylim=(-2.5, 2.5),
+                      rad_ylab="Radiance drift (%/yr)",
+                      rfl_ylab="Reflectance drift (%/yr)",
+                      title="Leave-one-out drift spectra (all combos)"):
+    """All leave-one-out combos' ``gamma(lambda)`` overlaid — rad (top) / rfl (bottom).
+
+    Reads the tidy leave-one-out table from
+    :func:`emit_pics.brdf_loo.leave_one_out_drift_spectra` (columns ``combo``,
+    ``product``, ``wavelength``, ``gamma_pct_yr``, ``unstable``). Each combo is
+    drawn as **point markers only** (no connecting line, so nothing interpolates
+    across the excluded water-vapor bands) in a unique colour **and** marker
+    (:func:`style.site_styles` over the combo labels — Wong palette, redundant
+    colour/marker encoding). Degenerate (``unstable``) channels are dropped. No CI
+    is drawn (the per-combo figures carry the uncertainty); this figure is the
+    side-by-side comparison of the five point estimates.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Tidy leave-one-out spectrum table (all combos, both products).
+    size, aspect : str, float
+        Theme width class and height/width.
+    ylim : tuple or None
+        Shared y-limits (%/yr) for both panels; ``None`` uses a robust 1–99
+        percentile window per panel.
+    rad_ylab, rfl_ylab : str
+        Y-axis labels for the two panels.
+    title : str
+        On-figure title (slide theme only; the manuscript caption is in LaTeX).
+    """
+    sc = style.scale()
+    d = df[~df["unstable"]]
+    combos = sorted(d["combo"].unique())
+    styles = style.site_styles(combos)
+
+    fig, axes = plt.subplots(2, 1, figsize=style.figsize(size, aspect),
+                             sharex=True, layout="constrained")
+    for ax, prod, ylab in zip(axes, ("rad", "rfl"), (rad_ylab, rfl_ylab)):
+        dp = d[d["product"] == prod]
+        for c in combos:
+            dc = dp[dp["combo"] == c].sort_values("wavelength")
+            ax.scatter(dc["wavelength"], dc["gamma_pct_yr"], s=8 * sc,
+                       marker=styles[c]["marker"], color=styles[c]["color"],
+                       edgecolors="none", alpha=0.8, zorder=3)
+        ax.axhline(0.0, color="k", lw=0.6 * sc, zorder=2)
+        ax.set_ylabel(ylab)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
+        else:
+            v = dp["gamma_pct_yr"].to_numpy(float)
+            if np.isfinite(v).any():
+                lo, hi = np.nanpercentile(v, [1, 99])
+                pad = 0.05 * (hi - lo) if hi > lo else 1.0
+                ax.set_ylim(lo - pad, hi + pad)
+
+    axes[1].set_xlabel("Wavelength (nm)")
+    handles = [Line2D([0], [0], marker=styles[c]["marker"], ls="none",
+                      color=styles[c]["color"], markersize=5 * sc, label=c)
+               for c in combos]
+    axes[0].legend(handles=handles, loc="upper left", frameon=True,
+                   framealpha=0.85, edgecolor="0.7", ncol=1,
+                   title="combo (sites kept)", title_fontsize=6.5 * sc)
+    if style.show_title():
+        axes[0].set_title(title)
+    return fig
+
+
+def jackknife_gamma_overlay(jack_df, full_df, *, size="double", aspect=0.75,
+                            ylim=(-2.5, 2.5), rad_ylab="Radiance drift (%/yr)",
+                            rfl_ylab="Reflectance drift (%/yr)",
+                            title="Leave-one-epoch-out drift spectra"):
+    """Block-jackknife overlay: block-deleted ``gamma(lambda)`` vs the full-fit CI.
+
+    The temporal counterpart to :func:`loo_gamma_overlay`. The full-data fit's 95%
+    bootstrap CI is drawn as a grey **band** (*full_df*, e.g.
+    ``brdf_drift_spectrum.csv``), broken across the excluded water-vapor windows;
+    each leave-one-block-out drift spectrum (*jack_df* from
+    :func:`emit_pics.brdf_jackknife.leave_one_block_out_drift_spectra`) is overlaid
+    as **point markers only** in a unique colour+marker per block. A block-deleted
+    series that stays within the band means that epoch does not drive the drift; a
+    marker straying outside flags an influential epoch. rad (top) / rfl (bottom).
+
+    Parameters
+    ----------
+    jack_df : pandas.DataFrame
+        Tidy leave-one-block-out table (``block_out``, ``product``, ``wavelength``,
+        ``gamma_pct_yr``, ``unstable``).
+    full_df : pandas.DataFrame
+        Full-data reference spectrum (``product``, ``wavelength``, ``ci_lo_pct_yr``,
+        ``ci_hi_pct_yr``, ``unstable``).
+    size, aspect : str, float
+        Theme width class and height/width.
+    ylim : tuple or None
+        Shared y-limits (%/yr) for both panels.
+    rad_ylab, rfl_ylab, title : str
+        Panel y-labels and (slide-theme only) on-figure title.
+    """
+    from matplotlib.patches import Patch
+
+    from emit_pics.patch_size_sensitivity import spectrum_segments
+    sc = style.scale()
+    j = jack_df[~jack_df["unstable"]]
+    blocks = sorted(j["block_out"].unique())
+    styles = style.site_styles(blocks)
+
+    fig, axes = plt.subplots(2, 1, figsize=style.figsize(size, aspect),
+                             sharex=True, layout="constrained")
+    for ax, prod, ylab in zip(axes, ("rad", "rfl"), (rad_ylab, rfl_ylab)):
+        # Full-fit 95% CI band (grey), broken across the water-vapor gaps.
+        f = full_df[(full_df["product"] == prod)
+                    & ~full_df["unstable"].astype(bool)].sort_values("wavelength")
+        wl = f["wavelength"].to_numpy(float)
+        lo = f["ci_lo_pct_yr"].to_numpy(float)
+        hi = f["ci_hi_pct_yr"].to_numpy(float)
+        for seg in spectrum_segments(wl):
+            ax.fill_between(wl[seg], lo[seg], hi[seg], color="0.82",
+                            lw=0, zorder=1)
+        # Block-deleted gamma point estimates, one colour+marker per block.
+        dp = j[j["product"] == prod]
+        for b in blocks:
+            db = dp[dp["block_out"] == b].sort_values("wavelength")
+            ax.scatter(db["wavelength"], db["gamma_pct_yr"], s=7 * sc,
+                       marker=styles[b]["marker"], color=styles[b]["color"],
+                       edgecolors="none", alpha=0.85, zorder=3)
+        ax.axhline(0.0, color="k", lw=0.6 * sc, zorder=2)
+        ax.set_ylabel(ylab)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
+
+    axes[1].set_xlabel("Wavelength (nm)")
+    handles = [Patch(facecolor="0.82", edgecolor="none", label="full-fit 95% CI")]
+    handles += [Line2D([0], [0], marker=styles[b]["marker"], ls="none",
+                       color=styles[b]["color"], markersize=5 * sc, label=b)
+                for b in blocks]
+    axes[0].legend(handles=handles, loc="upper left", frameon=True, framealpha=0.85,
+                   edgecolor="0.7", ncol=1, fontsize=6.5 * sc,
+                   title="epoch left out", title_fontsize=6.5 * sc)
     if style.show_title():
         axes[0].set_title(title)
     return fig
@@ -874,13 +1025,14 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
       their acquisition date (x) and in-patch mean SZA (y), joined by a near-horizontal
       segment (the pair is SZA-matched, so the connector is nearly flat but spans the
       time gap that carries the drift signal).
-    * **right** — a rug/eventplot of the QC-retained BRDF joint-fit scenes: one
-      vertical tick per scene at its date (no meaningful y-axis).
+    * **right** — the QC-retained BRDF joint-fit scenes, one dot per scene at its
+      acquisition date (x) and in-patch mean SZA (y) — the SAME SZA axis as the left
+      panel, so the two columns read in parallel.
 
     Every PICS is drawn in its stable Wong colour (:func:`style.site_styles`), so the
     rows match the other publication figures. Both columns share one time range (a
-    scene lines up vertically across columns); all left panels share one SZA range.
-    Only the bottom row carries date labels and only the left column carries SZA ticks.
+    scene lines up vertically across columns) and one SZA range. Only the bottom row
+    carries date labels and only the left column carries SZA ticks.
 
     Parameters
     ----------
@@ -888,8 +1040,8 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
         One per PICS, in display order, each with: ``name`` (str display label),
         ``site`` (canonical token, for the colour map), ``pairs`` (DataFrame with
         ``t1_dt``, ``t2_dt``, ``SZA_t1``, ``SZA_t2`` — one row per unique matched
-        pair), ``dates`` (datetime array of BRDF scenes), and the counts ``n_pairs``
-        / ``n_brdf``.
+        pair), ``dates`` (datetime array of BRDF scenes) with matching ``sza`` (mean
+        SZA per scene), and the counts ``n_pairs`` / ``n_brdf``.
     fig_w, fig_h : float
         Figure size in inches (fixed to the publication spec; default 6.5 × 6.0).
     headers : tuple
@@ -913,10 +1065,13 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
     dpad = (d1 - d0) * 0.03
     d0, d1 = d0 - dpad, d1 + dpad
 
-    # Shared SZA range across all matched-pairs panels.
+    # Shared SZA range across BOTH columns (matched-pair endpoints + BRDF scenes),
+    # so the left connectors and the right dots read on one common SZA axis.
     all_sza = np.concatenate([
-        np.r_[s["pairs"]["SZA_t1"].to_numpy(float), s["pairs"]["SZA_t2"].to_numpy(float)]
-        for s in sites_data if len(s["pairs"])])
+        np.r_[s["pairs"]["SZA_t1"].to_numpy(float),
+              s["pairs"]["SZA_t2"].to_numpy(float),
+              np.asarray(s["sza"], float)]
+        for s in sites_data])
     slo, shi = float(np.nanmin(all_sza)), float(np.nanmax(all_sza))
     spad = 0.10 * (shi - slo) if shi > slo else 2.0
     slo, shi = slo - spad, shi + spad
@@ -937,7 +1092,7 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
         for a, b, ya, yb in zip(t1, t2, y1, y2):
             ax_mp.plot([a, b], [ya, yb], color=c, lw=0.7 * sc, alpha=0.55,
                        solid_capstyle="round", zorder=2)
-        ax_mp.scatter(np.r_[t1.values, t2.values], np.r_[y1, y2], s=7 * sc, color=c,
+        ax_mp.scatter(np.r_[t1.values, t2.values], np.r_[y1, y2], s=18 * sc, color=c,
                       edgecolors="white", linewidths=0.3 * sc, zorder=3)
         ax_mp.set_ylim(slo, shi)
         ax_mp.yaxis.set_major_locator(MaxNLocator(3))
@@ -946,12 +1101,14 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
                    ha="left", va="top", fontsize=6.2 * sc, color="0.35",
                    path_effects=_halo(1.4 * sc))
 
-        # BRDF panel: a rug of retained-scene dates; no meaningful y-axis.
-        ax_ts.vlines(pd.to_datetime(s["dates"]), 0, 1, color=c, lw=0.9 * sc)
-        ax_ts.set_ylim(0, 1)
-        ax_ts.set_yticks([])
-        for sp in ("left", "right", "top"):
-            ax_ts.spines[sp].set_visible(False)
+        # BRDF panel: one dot per retained scene at its date and mean SZA, on the
+        # SAME SZA axis as the matched-pairs panel (semantic parallel; the left
+        # column carries the SZA tick labels for both).
+        ax_ts.scatter(pd.to_datetime(s["dates"]), np.asarray(s["sza"], float),
+                      s=18 * sc, color=c, edgecolors="white", linewidths=0.3 * sc,
+                      zorder=3)
+        ax_ts.set_ylim(slo, shi)
+        ax_ts.tick_params(axis="y", left=False, labelleft=False)
         ax_ts.text(0.985, 0.94, f"n = {s['n_brdf']}", transform=ax_ts.transAxes,
                    ha="right", va="top", fontsize=6.2 * sc, color="0.35",
                    path_effects=_halo(1.4 * sc))
