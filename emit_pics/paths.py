@@ -33,13 +33,24 @@ CUBE_DIR = DATA / "pixel_cubes"
 QC_DIR = DATA / "qc"
 MATCHED_DIR = DATA / "matched_pairs"   # matched pairs are geometry-based (variant-free)
 
+# ------------------------------------------------------------- Landsat 9 control
+# Parallel raw-input tree for the Landsat 9 TOA control analysis. Kept under its
+# own data/landsat/ subtree so Landsat geometry/stats never collide with EMIT's
+# (identical filenames, different sensor). TOA is the only product; it plugs into
+# the sensor-agnostic BRDF fit via the "toa" product token (see _PRODUCT_DIR).
+LANDSAT_DIR = DATA / "landsat"
+LS_GEOM_DIR = LANDSAT_DIR / "geometry"
+LS_TOA_DIR = LANDSAT_DIR / "toa"
+LS_CUBE_DIR = LANDSAT_DIR / "cubes"
+LS_QC_DIR = LANDSAT_DIR / "qc"
+
 # 20 km vs 10 km patch-size sensitivity (supplementary diagnostic). A fixed
 # comparison of two already-computed BRDF configurations, so it is deliberately
 # NOT variant-/label-nested — one flat home adjacent to data/brdf and figures/.
 PATCH_SENS_DIR = DATA / "20_km_patch_sensitivity"
 PATCH_SENS_FIG_DIR = FIGURES / "20_km_patch_sensitivity"
 
-_PRODUCT_DIR = {"rad": RAD_DIR, "rfl": RFL_DIR}
+_PRODUCT_DIR = {"rad": RAD_DIR, "rfl": RFL_DIR, "toa": LS_TOA_DIR}
 
 # ------------------------------------------------------- derived-output directories
 # These hold radiance-sensitive products (deltas, drift, BRDF, and their figures),
@@ -201,6 +212,25 @@ def geometry(site, patch) -> Path:
 def qc_sheet(site, patch) -> Path:
     """QC worksheet (``{tok}_{patch}_qc.csv``)."""
     return QC_DIR / f"{_tok(site)}_{patch}_qc.csv"
+
+
+# ----------------------------------------------------- Landsat 9 control (per-patch)
+# Same filename templates as the EMIT equivalents, but rooted in data/landsat/ so
+# the two sensors never collide. TOA per-band tables use the shared `perchannel`
+# builder via the "toa" product token; only geometry/qc/cube need Landsat homes.
+def ls_geometry(site, patch) -> Path:
+    """Landsat per-scene SZA/VZA geometry table (``geometry_{tok}_{patch}.csv``)."""
+    return LS_GEOM_DIR / f"geometry_{_tok(site)}_{patch}.csv"
+
+
+def ls_qc_sheet(site, patch) -> Path:
+    """Landsat QC worksheet (manual; ``{tok}_{patch}_qc.csv``)."""
+    return LS_QC_DIR / f"{_tok(site)}_{patch}_qc.csv"
+
+
+def ls_pixel_cube(site, patch, ts) -> Path:
+    """Optional cached Landsat in-patch pixel cube (multi-band GeoTIFF, for QC)."""
+    return LS_CUBE_DIR / f"cube_{_tok(site)}_{patch}_{ts}.tif"
 
 
 def qc_pdf(site, patch) -> Path:
