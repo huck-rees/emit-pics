@@ -28,8 +28,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from emit_pics.extract_patch_stats import AGG_FLAG_LABEL
-
 #: Controlled vocabulary for the ``reason`` column (free-text ``note`` for detail).
 QC_REASONS = ["cloud", "coverage", "artifact", "other"]
 
@@ -74,6 +72,9 @@ def _agg_pct(mask_dir, pics_id: str, patch_id: str, ts: str) -> float:
     """Aggregate-Flag flagged-% for one scene from its MASK summary, or NaN."""
     if mask_dir is None:
         return np.nan
+    # Lazy import: only the EMIT (mask_dir set) path needs this, and
+    # extract_patch_stats pulls in earthaccess — which the Landsat env lacks.
+    from emit_pics.extract_patch_stats import AGG_FLAG_LABEL
     path = Path(mask_dir) / f"{pics_id}_{patch_id}_{ts}_mask_summary.csv"
     if not path.exists():
         return np.nan

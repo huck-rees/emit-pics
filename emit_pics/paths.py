@@ -43,6 +43,7 @@ LS_GEOM_DIR = LANDSAT_DIR / "geometry"
 LS_TOA_DIR = LANDSAT_DIR / "toa"
 LS_CUBE_DIR = LANDSAT_DIR / "cubes"
 LS_QC_DIR = LANDSAT_DIR / "qc"
+LS_BRDF_DIR = LANDSAT_DIR / "brdf"
 
 # 20 km vs 10 km patch-size sensitivity (supplementary diagnostic). A fixed
 # comparison of two already-computed BRDF configurations, so it is deliberately
@@ -231,6 +232,23 @@ def ls_qc_sheet(site, patch) -> Path:
 def ls_pixel_cube(site, patch, ts) -> Path:
     """Optional cached Landsat in-patch pixel cube (multi-band GeoTIFF, for QC)."""
     return LS_CUBE_DIR / f"cube_{_tok(site)}_{patch}_{ts}.tif"
+
+
+def ls_brdf_drift_spectrum() -> Path:
+    """Pooled Landsat TOA per-band drift spectrum (``landsat_brdf_drift_spectrum.csv``)."""
+    return LS_BRDF_DIR / "landsat_brdf_drift_spectrum.csv"
+
+
+def set_ls_cube_dir(path) -> None:
+    """Redirect ONLY the Landsat pixel-cube output dir (e.g. to an external drive).
+
+    The cubes are large and QC-only, so a caller can send them to a parallel tree
+    on another volume (``paths.set_ls_cube_dir(r"D:\\JPL\\emit-pics\\data\\landsat\\cubes")``)
+    while the TOA + geometry CSVs stay repo-relative on the main drive. Affects
+    :func:`ls_pixel_cube` alone; every other path is unchanged.
+    """
+    global LS_CUBE_DIR
+    LS_CUBE_DIR = Path(path)
 
 
 def qc_pdf(site, patch) -> Path:

@@ -3,11 +3,12 @@
 
 Inverts the standalone per-site drift analysis. Rather than fitting each PICS on
 its own (few scenes → wide uncertainty), this drops one PICS at a time and fits
-the pooled shared-``gamma`` drift on the remaining **four** sites, at every EMIT
+the pooled shared-``gamma`` drift on the remaining invariant sites, at every EMIT
 channel, with the same stratified within-site bootstrap as the primary drift
-spectrum (:func:`emit_pics.brdf_drift.channel_gamma`). Five leave-one-out combos
-give five well-constrained ``gamma(lambda)`` spectra whose agreement shows no one
-site drives the pooled drift.
+spectrum (:func:`emit_pics.brdf_drift.channel_gamma`). One leave-one-out combo per
+invariant site gives well-constrained ``gamma(lambda)`` spectra whose agreement
+shows no one site drives the pooled drift. Sites in ``brdf.drift_exclude_sites``
+are not fit (same invariant set as the primary drift spectrum).
 
 Pure local post-processor. Requires the per-site geometry tables + QC sheets and
 the cached per-scene per-channel CSVs (the same inputs as the BRDF workflow); set
@@ -66,14 +67,16 @@ def main() -> int:
     if obs is None or obs.empty:
         print("No usable scenes across the roster; nothing to fit.")
         return 1
+    # Drop non-invariant sites from the FIT only (they stay in the design/figures).
+    obs, dropped = brdf_drift.apply_drift_exclusion(obs, cfg)
+    if dropped:
+        print(f"Excluded from drift fit (not invariant): {', '.join(dropped)}")
     sites = sorted(obs["site"].unique())
     if len(sites) < 3:
         print(f"Only {len(sites)} site(s) usable; leave-one-out needs >= 3.")
         return 1
-    if len(sites) != 5:
-        print(f"Note: {len(sites)} sites present (expected 5); proceeding with "
-              f"{len(sites)} leave-one-out combos.")
-    print(f"Design: {len(obs)} scenes across {len(sites)} sites | origin {T0.date()}")
+    print(f"Design: {len(obs)} scenes across {len(sites)} sites | "
+          f"{len(sites)} leave-one-out combos | origin {T0.date()}")
 
     # 2. Reference grid + water-vapor exclusion, from one reflectance-bearing scene.
     ref = brdf_drift.scene_perchannel(obs.iloc[0]["site"], obs.iloc[0]["patch"],

@@ -184,29 +184,41 @@ def patch_size_drift_spectrum(cmp, *, window=11, tag10="10km", tag20="20km",
 _SPECTRA_LS = ["-", "--", "-.", (0, (1, 1)), (0, (3, 1, 1, 1))]
 
 
-def brdf_site_mean_spectra(spectra, *, size="double", aspect=0.9,
-                           rad_label="Mean radiance (µW/cm²/sr/nm)",
-                           rfl_label="Mean reflectance (unitless)",
-                           title="Mean EMIT spectra by PICS (10 km BRDF patch)"):
-    """Two-panel mean rad (top) / rfl (bottom) spectra, one line per PICS.
+def brdf_site_mean_spectra(spectra, *, landsat_spectra=None, size="double",
+                           aspect=None, figsize=None,
+                           rad_label="EMIT mean TOA radiance,\n$L$ (µW/cm²/sr/nm)",
+                           rfl_label="EMIT mean surface\nreflectance, $\\rho$ (unitless)",
+                           toa_label="Landsat 9 OLI-2 mean TOA\nreflectance, $\\rho$ (unitless)",
+                           title="Mean spectra by PICS (10 km BRDF patch)"):
+    """Stacked mean-spectra panels, one line per PICS, in stable per-site colours.
 
-    Reads the assembled per-site mean spectra from
+    Reads the assembled EMIT per-site mean spectra from
     :func:`emit_pics.brdf_drift.site_mean_spectra`: ``{pics_id: {"wl", "mean_rad",
-    "mean_rfl", "n", "patch"}}``. Each PICS is a single line — the mean over that
-    representative patch's QC-surviving scenes — drawn in its stable Wong colour
-    (:func:`style.site_styles`) plus a cycled line style for greyscale safety.
-    Both lines break across the deep water-vapor bands — reflectance because L2A
-    is fill there, radiance to match, so both panels exclude the SAME channels the
-    drift figures do. The legend carries each PICS's scene count ``n``.
+    "mean_rfl", "n", "patch"}}``. Each PICS is a single line (the mean over that
+    representative patch's QC-surviving scenes) in its stable Wong colour
+    (:func:`style.site_styles`) plus a cycled line style for greyscale safety. The
+    EMIT lines break across the deep water-vapor bands so the panels exclude the
+    SAME channels the drift figures do.
+
+    If *landsat_spectra* is given (same structure, with ``mean_toa`` over the seven
+    OLI-2 bands, from :func:`emit_pics.landsat_brdf.landsat_site_mean_spectra`), a
+    Landsat TOA-reflectance panel is added on top, giving three panels: (a) Landsat
+    9 TOA reflectance, (b) EMIT radiance, (c) EMIT surface reflectance. Landsat is
+    drawn as markers (seven discrete bands) with a thin guide line, so a reader does
+    not read it as continuous. Without *landsat_spectra* the original two-panel
+    EMIT figure is produced.
 
     Parameters
     ----------
     spectra : dict
-        ``{pics_id: {"wl", "mean_rad", "mean_rfl": array, "n": int, "patch": str}}``.
-    size, aspect : str, float
-        Theme width class and height/width (taller default for two stacked panels).
-    rad_label, rfl_label : str
-        Y-axis labels for the two panels.
+        EMIT ``{pics_id: {"wl", "mean_rad", "mean_rfl": array, "n": int, "patch"}}``.
+    landsat_spectra : dict or None
+        Landsat ``{pics_id: {"wl", "mean_toa": array, "n": int, "patch"}}`` or None.
+    size, aspect : str, float or None
+        Theme width class and height/width (``None`` picks a taller value for the
+        three-panel layout).
+    rad_label, rfl_label, toa_label : str
+        Y-axis labels.
     title : str
         On-figure title (slide theme only; the manuscript caption is in LaTeX).
     """
@@ -215,31 +227,55 @@ def brdf_site_mean_spectra(spectra, *, size="double", aspect=0.9,
     sites = sorted(spectra)
     styles = style.site_styles(sites)
 
-    fig, axes = plt.subplots(2, 1, figsize=style.figsize(size, aspect),
+    # Panels top-to-bottom: optional Landsat TOA, then EMIT radiance, EMIT reflectance.
+    # Each tuple: (kind, data-key, y-label, data-dict, legend-location).
+    panels = []
+    if landsat_spectra is not None:
+        panels.append(("toa", "mean_toa", toa_label, landsat_spectra, "lower right"))
+    panels.append(("emit", "mean_rad", rad_label, spectra, "upper right"))
+    panels.append(("emit", "mean_rfl", rfl_label, spectra, "lower right"))
+    nrows = len(panels)
+    if figsize is None:
+        if nrows == 3:
+            figsize = (6.5, 7.0)   # manuscript: 6.5 in wide, fits page height with caption
+        else:
+            figsize = style.figsize(size, 0.9 if aspect is None else aspect)
+
+    fig, axes = plt.subplots(nrows, 1, figsize=figsize,
                              sharex=True, layout="constrained")
-    for ax, key, ylab in zip(axes, ("mean_rad", "mean_rfl"), (rad_label, rfl_label)):
+    if nrows == 1:
+        axes = [axes]
+    for ax, (kind, key, ylab, data, legend_loc) in zip(axes, panels):
         for i, s in enumerate(sites):
-            d = spectra[s]
-            y = np.asarray(d[key], float).copy()
-            # Break BOTH lines across the deep water-vapor windows. Reflectance
-            # retrieval is fill/unreliable there; radiance is physical but a small
-            # residual we omit anyway so the two panels exclude the SAME channels
-            # the drift analyses do (matching the drift-spectrum figures).
+            if s not in data:
+                continue
+            d = data[s]
             wl = np.asarray(d["wl"], float)
-            for lo, hi in ABSORPTION_BANDS_NM:
-                y[(wl >= lo) & (wl <= hi)] = np.nan
-            ax.plot(d["wl"], y, color=styles[s]["color"],
-                    ls=_SPECTRA_LS[i % len(_SPECTRA_LS)], lw=1.0 * sc, alpha=0.9)
+            y = np.asarray(d[key], float).copy()
+            if kind == "emit":
+                # Break across the deep water-vapor windows (L2A is fill there;
+                # radiance matched so both panels exclude the same channels).
+                for lo, hi in ABSORPTION_BANDS_NM:
+                    y[(wl >= lo) & (wl <= hi)] = np.nan
+                ax.plot(wl, y, color=styles[s]["color"],
+                        ls=_SPECTRA_LS[i % len(_SPECTRA_LS)], lw=1.0 * sc, alpha=0.9)
+            else:
+                # Landsat: seven discrete bands as markers plus a thin guide line.
+                ax.plot(wl, y, color=styles[s]["color"],
+                        ls=_SPECTRA_LS[i % len(_SPECTRA_LS)], lw=0.7 * sc, alpha=0.5,
+                        marker="o", ms=4.0 * sc, mec="none")
         ax.set_ylabel(ylab)
         ax.margins(x=0.01)
+        # Per-panel legend with that panel's own scene counts (n differs by sensor).
+        handles = [Line2D([0], [0], color=styles[s]["color"],
+                          ls=_SPECTRA_LS[i % len(_SPECTRA_LS)], lw=1.3 * sc,
+                          marker=("o" if kind == "toa" else None),
+                          label=f"{s.replace('_', ' ')} (n = {data[s]['n']})")
+                   for i, s in enumerate(sites) if s in data]
+        ax.legend(handles=handles, loc=legend_loc, frameon=True,
+                  framealpha=0.85, edgecolor="0.7")
 
-    axes[1].set_xlabel("Wavelength (nm)")
-    handles = [Line2D([0], [0], color=styles[s]["color"],
-                      ls=_SPECTRA_LS[i % len(_SPECTRA_LS)], lw=1.3 * sc,
-                      label=f"{s.replace('_', ' ')} (n = {spectra[s]['n']})")
-               for i, s in enumerate(sites)]
-    axes[0].legend(handles=handles, loc="upper right", frameon=True,
-                   framealpha=0.85, edgecolor="0.7")
+    axes[-1].set_xlabel("Wavelength (nm)")
     if style.show_title():
         axes[0].set_title(title)
     return fig
@@ -374,81 +410,6 @@ def loo_gamma_overlay(df, *, size="double", aspect=0.75, ylim=(-2.5, 2.5),
     return fig
 
 
-def jackknife_gamma_overlay(jack_df, full_df, *, size="double", aspect=0.75,
-                            ylim=(-2.5, 2.5), rad_ylab="Radiance drift (%/yr)",
-                            rfl_ylab="Reflectance drift (%/yr)",
-                            title="Leave-one-epoch-out drift spectra"):
-    """Block-jackknife overlay: block-deleted ``gamma(lambda)`` vs the full-fit CI.
-
-    The temporal counterpart to :func:`loo_gamma_overlay`. The full-data fit's 95%
-    bootstrap CI is drawn as a grey **band** (*full_df*, e.g.
-    ``brdf_drift_spectrum.csv``), broken across the excluded water-vapor windows;
-    each leave-one-block-out drift spectrum (*jack_df* from
-    :func:`emit_pics.brdf_jackknife.leave_one_block_out_drift_spectra`) is overlaid
-    as **point markers only** in a unique colour+marker per block. A block-deleted
-    series that stays within the band means that epoch does not drive the drift; a
-    marker straying outside flags an influential epoch. rad (top) / rfl (bottom).
-
-    Parameters
-    ----------
-    jack_df : pandas.DataFrame
-        Tidy leave-one-block-out table (``block_out``, ``product``, ``wavelength``,
-        ``gamma_pct_yr``, ``unstable``).
-    full_df : pandas.DataFrame
-        Full-data reference spectrum (``product``, ``wavelength``, ``ci_lo_pct_yr``,
-        ``ci_hi_pct_yr``, ``unstable``).
-    size, aspect : str, float
-        Theme width class and height/width.
-    ylim : tuple or None
-        Shared y-limits (%/yr) for both panels.
-    rad_ylab, rfl_ylab, title : str
-        Panel y-labels and (slide-theme only) on-figure title.
-    """
-    from matplotlib.patches import Patch
-
-    from emit_pics.patch_size_sensitivity import spectrum_segments
-    sc = style.scale()
-    j = jack_df[~jack_df["unstable"]]
-    blocks = sorted(j["block_out"].unique())
-    styles = style.site_styles(blocks)
-
-    fig, axes = plt.subplots(2, 1, figsize=style.figsize(size, aspect),
-                             sharex=True, layout="constrained")
-    for ax, prod, ylab in zip(axes, ("rad", "rfl"), (rad_ylab, rfl_ylab)):
-        # Full-fit 95% CI band (grey), broken across the water-vapor gaps.
-        f = full_df[(full_df["product"] == prod)
-                    & ~full_df["unstable"].astype(bool)].sort_values("wavelength")
-        wl = f["wavelength"].to_numpy(float)
-        lo = f["ci_lo_pct_yr"].to_numpy(float)
-        hi = f["ci_hi_pct_yr"].to_numpy(float)
-        for seg in spectrum_segments(wl):
-            ax.fill_between(wl[seg], lo[seg], hi[seg], color="0.82",
-                            lw=0, zorder=1)
-        # Block-deleted gamma point estimates, one colour+marker per block.
-        dp = j[j["product"] == prod]
-        for b in blocks:
-            db = dp[dp["block_out"] == b].sort_values("wavelength")
-            ax.scatter(db["wavelength"], db["gamma_pct_yr"], s=7 * sc,
-                       marker=styles[b]["marker"], color=styles[b]["color"],
-                       edgecolors="none", alpha=0.85, zorder=3)
-        ax.axhline(0.0, color="k", lw=0.6 * sc, zorder=2)
-        ax.set_ylabel(ylab)
-        if ylim is not None:
-            ax.set_ylim(*ylim)
-
-    axes[1].set_xlabel("Wavelength (nm)")
-    handles = [Patch(facecolor="0.82", edgecolor="none", label="full-fit 95% CI")]
-    handles += [Line2D([0], [0], marker=styles[b]["marker"], ls="none",
-                       color=styles[b]["color"], markersize=5 * sc, label=b)
-                for b in blocks]
-    axes[0].legend(handles=handles, loc="upper left", frameon=True, framealpha=0.85,
-                   edgecolor="0.7", ncol=1, fontsize=6.5 * sc,
-                   title="epoch left out", title_fontsize=6.5 * sc)
-    if style.show_title():
-        axes[0].set_title(title)
-    return fig
-
-
 def cos_sza_time_corr(obs, corr, *, T0=None, size="double", aspect=0.62, ncol=3,
                       title="Solar geometry vs time by PICS"):
     """Per-site scatter of ``cos(theta)`` against ``t``, with Spearman rho / p.
@@ -531,9 +492,9 @@ def _norm_site(s):
     return str(s).strip().lower().replace(" ", "_")
 
 
-def brdf_cos_sza(design, *, site="Libya_4", fig_width=6.5, aspect=0.52,
-                 target_wl=None, suptitle=None):
-    """Fig. 2: in-patch median vs cos(SZA) — radiance (A) and reflectance (B).
+def brdf_cos_sza(design, *, landsat_design=None, site="Libya_4", fig_width=6.5,
+                 aspect=0.42, target_wl=None, suptitle=None):
+    """Fig. 3: in-patch spatial median vs cos(SZA), per product (Landsat + EMIT).
 
     Motivates the quasi-BRDF correction: at a fixed target band, both products vary
     with solar-illumination angle (radiance because incident flux scales with
@@ -572,13 +533,24 @@ def brdf_cos_sza(design, *, site="Libya_4", fig_width=6.5, aspect=0.52,
         site_label = str(site).replace("_", " ")
     styles = style.site_styles(design["site"].unique()) if pooled else None
 
-    fig, axes = plt.subplots(1, 2, figsize=(fig_width, fig_width * aspect),
-                             layout="constrained")
-    prods = (("rad", "rho_rad", "Median radiance (µW/cm²/sr/nm)"),
-             ("rfl", "rho_rfl", "Median reflectance (unitless)"))
+    # Panels left-to-right: optional Landsat TOA (a), then EMIT radiance, reflectance.
+    panels = []
+    if landsat_design is not None and not pooled:
+        panels.append(("toa", landsat_design, "rho_toa",
+                       "Landsat 9 OLI-2 median TOA\nreflectance, $\\rho$ (unitless)"))
+    panels.append(("rad", design, "rho_rad",
+                   "EMIT median TOA radiance,\n$L$ (µW/cm²/sr/nm)"))
+    panels.append(("rfl", design, "rho_rfl",
+                   "EMIT median surface\nreflectance, $\\rho$ (unitless)"))
+    ncols = len(panels)
 
-    for ax, (key, col, ylab) in zip(axes, prods):
-        d = design[np.isfinite(design["g"]) & np.isfinite(design[col])]
+    fig, axes = plt.subplots(1, ncols, figsize=(fig_width, fig_width * aspect),
+                             layout="constrained")
+    if ncols == 1:
+        axes = [axes]
+
+    for ax, (key, dsrc, col, ylab) in zip(axes, panels):
+        d = dsrc[np.isfinite(dsrc["g"]) & np.isfinite(dsrc[col])]
         x = d["g"].to_numpy(dtype=float)
         y = d[col].to_numpy(dtype=float)
 
@@ -589,12 +561,13 @@ def brdf_cos_sza(design, *, site="Libya_4", fig_width=6.5, aspect=0.52,
                            marker=st["marker"], edgecolors="k", linewidths=0.3 * sc,
                            alpha=0.85, zorder=3, label=str(s))
         else:
-            pc = style.PRODUCT_STYLE[key]
+            pc = style.PRODUCT_STYLE.get(key, style.PRODUCT_STYLE["rfl"])
             ax.scatter(x, y, s=13 * sc, color=pc["color"], marker=pc["marker"],
                        edgecolors="k", linewidths=0.3 * sc, alpha=0.85, zorder=3)
 
         # One OLS line per panel + a top-left stats box (R², slope, p, n).
-        header = "" if pooled else f"{site_label}\n"
+        # Site name is given in the caption, so it is omitted here as redundant.
+        header = ""
         if x.size >= 3 and np.ptp(x) > 0:
             lr = linregress(x, y)
             xr = np.array([x.min(), x.max()])
@@ -1016,7 +989,8 @@ def _grid_on_ax(ax, patches, boundary, valcol, norm, cmap, sc):
 
 
 def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
-                      headers=("Matched pairs coverage", "BRDF time series")):
+                      headers=("EMIT matched\npairs coverage", "EMIT BRDF\ntime series",
+                               "OLI-2 BRDF\ntime series")):
     """Per-PICS temporal coverage: matched pairs (SZA vs time) + BRDF scene rug.
 
     One row per PICS, two columns on a shared time axis:
@@ -1061,6 +1035,7 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
         p = s["pairs"]
         all_dates += list(pd.to_datetime(p["t1_dt"])) + list(pd.to_datetime(p["t2_dt"]))
         all_dates += list(pd.to_datetime(s["dates"]))
+        all_dates += list(pd.to_datetime(s.get("ls_dates", [])))
     d0, d1 = min(all_dates), max(all_dates)
     dpad = (d1 - d0) * 0.03
     d0, d1 = d0 - dpad, d1 + dpad
@@ -1070,20 +1045,21 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
     all_sza = np.concatenate([
         np.r_[s["pairs"]["SZA_t1"].to_numpy(float),
               s["pairs"]["SZA_t2"].to_numpy(float),
-              np.asarray(s["sza"], float)]
+              np.asarray(s["sza"], float),
+              np.asarray(s.get("ls_sza", []), float)]
         for s in sites_data])
     slo, shi = float(np.nanmin(all_sza)), float(np.nanmax(all_sza))
     spad = 0.10 * (shi - slo) if shi > slo else 2.0
     slo, shi = slo - spad, shi + spad
 
     fig = plt.figure(figsize=(fig_w, fig_h))
-    gs = GridSpec(n, 2, figure=fig, left=0.135, right=0.99, top=0.945, bottom=0.055,
-                  wspace=0.06, hspace=0.16, width_ratios=[1.0, 1.0])
-    axes = [[fig.add_subplot(gs[i, j]) for j in range(2)] for i in range(n)]
+    gs = GridSpec(n, 3, figure=fig, left=0.115, right=0.99, top=0.925, bottom=0.055,
+                  wspace=0.07, hspace=0.16, width_ratios=[1.0, 1.0, 1.0])
+    axes = [[fig.add_subplot(gs[i, j]) for j in range(3)] for i in range(n)]
 
     for i, s in enumerate(sites_data):
         c = styles[s["site"]]["color"]
-        ax_mp, ax_ts = axes[i]
+        ax_mp, ax_ts, ax_ls = axes[i]
         p = s["pairs"]
         t1 = pd.to_datetime(p["t1_dt"]); t2 = pd.to_datetime(p["t2_dt"])
         y1 = p["SZA_t1"].to_numpy(float); y2 = p["SZA_t2"].to_numpy(float)
@@ -1097,8 +1073,8 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
         ax_mp.set_ylim(slo, shi)
         ax_mp.yaxis.set_major_locator(MaxNLocator(3))
         ax_mp.tick_params(axis="y", labelsize=7 * sc, length=2 * sc)
-        ax_mp.text(0.015, 0.94, f"{s['n_pairs']} pairs", transform=ax_mp.transAxes,
-                   ha="left", va="top", fontsize=6.2 * sc, color="0.35",
+        ax_mp.text(0.015, 0.06, f"{s['n_pairs']} pairs", transform=ax_mp.transAxes,
+                   ha="left", va="bottom", fontsize=6.2 * sc, color="0.35",
                    path_effects=_halo(1.4 * sc))
 
         # BRDF panel: one dot per retained scene at its date and mean SZA, on the
@@ -1113,24 +1089,140 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
                    ha="right", va="top", fontsize=6.2 * sc, color="0.35",
                    path_effects=_halo(1.4 * sc))
 
-        # Shared time axis on both panels; label years on the bottom row only.
-        for ax in (ax_mp, ax_ts):
+        # Landsat BRDF panel: far more scenes on the SAME SZA axis (smaller markers
+        # so the denser cloud stays legible); shares the left column's SZA ticks.
+        ax_ls.scatter(pd.to_datetime(s.get("ls_dates", [])),
+                      np.asarray(s.get("ls_sza", []), float),
+                      s=9 * sc, color=c, edgecolors="white", linewidths=0.2 * sc,
+                      alpha=0.85, zorder=3)
+        ax_ls.set_ylim(slo, shi)
+        ax_ls.tick_params(axis="y", left=False, labelleft=False)
+        ax_ls.text(0.985, 0.94, f"n = {s.get('n_landsat', 0)}", transform=ax_ls.transAxes,
+                   ha="right", va="top", fontsize=6.2 * sc, color="0.35",
+                   path_effects=_halo(1.4 * sc))
+
+        # Shared time axis on all panels; label years on the bottom row only.
+        for ax in (ax_mp, ax_ts, ax_ls):
             ax.set_xlim(d0, d1)
             ax.xaxis.set_major_locator(mdates.YearLocator())
-            ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("'%y"))
             ax.tick_params(axis="x", labelbottom=(i == n - 1),
-                           labelsize=7 * sc, length=2 * sc)
+                           labelsize=6.5 * sc, length=2 * sc)
 
         # Rotated PICS name identifying the row (black; only the data is coloured).
         ax_mp.annotate(s["name"], xy=(-0.15, 0.5), xycoords="axes fraction",
                        rotation=90, ha="center", va="center",
                        fontsize=8 * sc, fontweight="bold", color="black")
 
-    axes[0][0].set_title(headers[0], fontsize=8.5 * sc, fontweight="bold", pad=4 * sc)
-    axes[0][1].set_title(headers[1], fontsize=8.5 * sc, fontweight="bold", pad=4 * sc)
+    axes[0][0].set_title(headers[0], fontsize=7.5 * sc, fontweight="bold", pad=4 * sc)
+    axes[0][1].set_title(headers[1], fontsize=7.5 * sc, fontweight="bold", pad=4 * sc)
+    axes[0][2].set_title(headers[2], fontsize=7.5 * sc, fontweight="bold", pad=4 * sc)
     # One shared SZA label at the far-left edge (the row names sit between it and the
     # ticks). The time axis needs no label — years on the bottom row make it obvious.
     fig.supylabel("Mean SZA (°)", fontsize=8 * sc, x=0.008)
+    return fig
+
+
+def landsat_invariance_spectra(persite, loo, *, fig_w=6.5, fig_h=7.2,
+                               site_order=("Libya_1", "Libya_4", "Algeria_3",
+                                           "Algeria_5", "Mauritania_1")):
+    """Landsat 9 OLI-2 invariance as a 3x5 grid of forest plots (dot + 95% CI whisker).
+
+    No interpolation between bands — each estimate is an independent dot with a
+    horizontal 95% bootstrap CI whisker, drift gamma on the x-axis. Every panel is
+    one OLI-2 band and holds five rows coloured by PICS (the Fig.~4 colour scheme).
+    In reading order:
+
+    * **panels 1-7** — per-site standalone gamma at each band (row = that PICS).
+    * **panels 8-14** — leave-one-out pooled gamma at each band (row = the combination
+      with that PICS withheld, coloured by the *missing* PICS).
+    * **panel 15** — a legend decoding the PICS abbreviations and colours.
+
+    Per-site panels share one gamma x-axis (wide enough for Mauritania~1); the
+    leave-one-out panels share a second, narrower one. ``persite`` and ``loo`` are
+    the tables written by ``run_landsat_brdf_robustness.py``.
+    """
+    from matplotlib.lines import Line2D
+    sc = style.scale()
+    sites = [s for s in site_order if s in set(persite["site"])]
+    styles = style.site_styles(sites)
+    abbr = {s: f"{s.split('_')[0][0]}{s.split('_')[-1]}" for s in sites}
+    wls = sorted(persite["wavelength"].unique())
+    ncol, nrow = 3, 5
+    panels = ([("ps", wl) for wl in wls] + [("loo", wl) for wl in wls]
+              + [("legend", None)])
+
+    # Two shared x-ranges: per-site (spans the large Mauritania 1 excursion) and
+    # leave-one-out (narrower). Each group is directly comparable within itself.
+    def _xlim(df, pad=0.08):
+        lo = float(df["ci_lo_pct_yr"].min()); hi = float(df["ci_hi_pct_yr"].max())
+        m = pad * (hi - lo)
+        return lo - m, hi + m
+    xlim = {"ps": _xlim(persite), "loo": _xlim(loo)}
+
+    def _rec(df, mask):
+        r = df[mask]
+        return None if r.empty else (float(r["gamma_pct_yr"].iloc[0]),
+                                     float(r["ci_lo_pct_yr"].iloc[0]),
+                                     float(r["ci_hi_pct_yr"].iloc[0]))
+
+    fig, axes = plt.subplots(nrow, ncol, figsize=(fig_w, fig_h), layout="constrained")
+    axflat = axes.flatten()
+    n = len(sites)
+
+    for k, ax in enumerate(axflat):
+        if k >= len(panels):
+            ax.axis("off")
+            continue
+        kind, wl = panels[k]
+        if kind == "legend":
+            ax.axis("off")
+            handles = [Line2D([0], [0], marker="o", ls="none", ms=5 * sc,
+                              mfc=styles[s]["color"], mec="white", mew=0.4 * sc)
+                       for s in sites]
+            labels = [f"{abbr[s]} - {s.replace('_', ' ')}" for s in sites]
+            ax.legend(handles, labels, loc="center", fontsize=7 * sc, frameon=True,
+                      edgecolor="0.7", framealpha=0.95, handletextpad=0.5,
+                      borderpad=0.9, labelspacing=0.8, title="PICS",
+                      title_fontsize=7.5 * sc)
+            continue
+
+        # Each row is a PICS (per-site) or the drop-that-PICS combo (LOO), same order.
+        for i, s in enumerate(sites):
+            if kind == "ps":
+                v = _rec(persite, (persite["site"] == s)
+                         & np.isclose(persite["wavelength"], wl))
+            else:
+                v = _rec(loo, (loo["left_out"] == s)
+                         & np.isclose(loo["wavelength"], wl))
+            if v is None:
+                continue
+            g, lo, hi = v
+            ax.errorbar(g, n - 1 - i, xerr=[[g - lo], [hi - g]], fmt="o",
+                        ms=4.0 * sc, color=styles[s]["color"],
+                        ecolor=styles[s]["color"], elinewidth=1.0 * sc,
+                        capsize=2.0 * sc, mec="white", mew=0.3 * sc, zorder=3)
+        ax.set_ylim(-0.6, n - 0.4)
+        ax.set_yticks([n - 1 - i for i in range(n)])
+        ax.set_xlim(*xlim[kind])
+        ax.axvline(0, color="k", lw=0.8, ls="--", zorder=1)
+        ax.grid(True, color="0.92", lw=0.4, zorder=0)
+        ax.tick_params(axis="y", length=0)
+        ax.set_title(f"{wl:.0f} nm" + (" (single PICS)" if kind == "ps" else " (LOO)"),
+                     fontsize=7 * sc, pad=2 * sc)
+        ax.text(0.04, 0.97, f"{chr(ord('a') + k)})", transform=ax.transAxes,
+                va="top", ha="left", fontsize=12, fontweight="bold",
+                fontfamily="Arial", zorder=6)
+
+        below = panels[k + ncol] if k + ncol < len(panels) else None
+        ax.tick_params(axis="x", labelsize=6 * sc, length=2 * sc,
+                       labelbottom=(below is None or below[0] != kind))
+        if k % ncol == 0:
+            ax.set_yticklabels([abbr[s] for s in sites], fontsize=6 * sc)
+        else:
+            ax.tick_params(axis="y", labelleft=False)
+
+    fig.supxlabel("Drift $\\gamma$ (%/yr)", fontsize=8 * sc)
     return fig
 
 

@@ -63,6 +63,8 @@ brdf:
     Algeria_5: "10_6_7"
     Mauritania_1: "10_4_3"
   exclude_sites: [Mauritania_2]   # dropped by design (too few QC-surviving scenes)
+  drift_exclude_sites: [Mauritania_1]   # kept in design/figures, dropped from the EMIT
+                                        # drift fit (Landsat control: not invariant)
   # Optional output sub-namespace for the BRDF products ONLY (data/brdf/<label>/,
   # figures/brdf/<label>/). BRDF filenames are not patch-size-keyed, so use this
   # for a size sensitivity run (e.g. label: "20km" with 20 km site_patches) so it
@@ -74,11 +76,6 @@ brdf:
   per_site_boot: 500       # resamples for each site's standalone-gamma CI (§4b)
   spectrum_n_boot: 300     # per-channel resamples for the gamma(lambda) spectrum (§8)
   gamma_cap: 500.0         # %/yr; |gamma| or CI half-width beyond this = degenerate fit
-
-# --- temporal jackknife (leave-one-epoch-out; reuses brdf.spectrum_n_boot / gamma_cap) ---
-jackknife:
-  block_scheme: equal_count   # equal_count (n contiguous equal-size blocks) | calendar_year
-  n_blocks: 5
 
 # --- pixel extraction ---
 extract:

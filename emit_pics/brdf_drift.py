@@ -330,6 +330,25 @@ def resolve_roster(cfg):
     return roster, excluded, unknown
 
 
+def apply_drift_exclusion(obs, cfg):
+    """Drop ``cfg.brdf_drift_exclude_sites`` from a pooled design before the drift fit.
+
+    These sites remain in the design table and every figure; they are removed only
+    from the EMIT drift FIT because the Landsat control found them not temporally
+    invariant (e.g. Mauritania 1). Distinct from ``brdf_exclude_sites``, which drops
+    a site from the pipeline entirely. Matching is on the canonical underscore token.
+
+    Returns ``(filtered_obs, dropped)`` where *dropped* lists the site tokens removed.
+    """
+    excl = {str(s).replace(" ", "_") for s in getattr(cfg, "brdf_drift_exclude_sites", [])}
+    if not excl or obs is None or "site" not in obs.columns:
+        return obs, []
+    norm = obs["site"].astype(str).str.replace(" ", "_", regex=False)
+    mask = norm.isin(excl)
+    dropped = sorted(norm[mask].unique())
+    return obs.loc[~mask].reset_index(drop=True), dropped
+
+
 def scene_perchannel(site, patch, ts, product, *, earth_sun_normalize=True,
                      e0_method="spencer"):
     """One scene's per-channel stats CSV as a DataFrame, or None if absent.
@@ -340,7 +359,7 @@ def scene_perchannel(site, patch, ts, product, *, earth_sun_normalize=True,
     :func:`load_scene_spectrum`; *e0_method* selects the ``E0`` provider
     (``"spencer"`` | ``"table"``). Reflectance is returned unchanged.
     """
-    d = paths.RAD_DIR if product == "rad" else paths.RFL_DIR
+    d = paths._PRODUCT_DIR[product]        # rad | rfl | toa (Landsat control)
     path = _perchannel_path(d, site, patch, str(ts), product)
     if not path.exists():
         return None

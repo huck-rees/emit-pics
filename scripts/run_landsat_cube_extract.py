@@ -56,16 +56,30 @@ COLLECTION = "landsat-c2l1"
 PLATFORM = "landsat-9"
 MAX_CLOUD = 5.0
 MIN_COVERAGE = 0.99                                   # skip scenes with fill/gaps in-patch
-CACHE_PIXELS = False                                  # windowed reads are cheap; cache off by default
 RESUME = True                                         # skip scenes already written to disk
+
+# Pixel-cube cache (QC only). Off by default; when ON the cubes are large, so they
+# can be sent to a parallel tree on another volume via EXTERNAL_CUBE_DIR while the
+# TOA + geometry CSVs stay repo-relative on the main drive. None = repo-relative.
+CACHE_PIXELS = False
+EXTERNAL_CUBE_DIR = None                              # e.g. r"D:\JPL\emit-pics\data\landsat\cubes"
 
 cfg = load_config()
 PICS_ID = canonical_token(cfg.site)
 PATCH_ID = cfg.patch
 
+if EXTERNAL_CUBE_DIR:
+    paths.set_ls_cube_dir(EXTERNAL_CUBE_DIR)          # redirect ONLY the cubes off-drive
+
 
 def _already_done(ts):
-    """RESUME key: the per-band TOA CSV for this scene already exists."""
+    """RESUME key: outputs for this scene already on disk.
+
+    With cube caching ON the cube is the key (a stats-only prior pass writes the
+    TOA CSV but no cube, and must be re-done to produce it); otherwise the TOA CSV.
+    """
+    if CACHE_PIXELS:
+        return paths.ls_pixel_cube(PICS_ID, PATCH_ID, ts).exists()
     return paths.perchannel(PICS_ID, PATCH_ID, ts, "toa").exists()
 
 

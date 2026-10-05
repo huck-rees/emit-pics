@@ -79,11 +79,28 @@ def _load_brdf_cos_sza(cfg, *, highlight="Libya 4"):
     single-surface fit; the builder accepts ``site=None`` to pool all sites.
     """
     from emit_pics.config import canonical_token
+    from emit_pics import brdf_drift, landsat_brdf
     csv = paths.brdf_design()
     if not csv.exists():
         return None, f"{csv.name} not found — run scripts/run_brdf_assemble.py first."
-    return ({"design": pd.read_csv(csv), "site": canonical_token(highlight),
-             "target_wl": cfg.brdf_target_wl}, f"{csv.name} ({highlight})")
+    site_tok = canonical_token(highlight)
+
+    # Landsat cos(SZA) design for the same site: per-scene cos(SZA) + spatial-median
+    # TOA reflectance at the NIR band nearest brdf.target_wl (865 nm for OLI-2).
+    ls_design = None
+    try:
+        roster, _, _ = brdf_drift.resolve_roster(cfg)
+        ls_obs, _, _, _ = landsat_brdf.assemble_design_landsat(roster, cfg)
+        if ls_obs is not None:
+            sub = ls_obs[ls_obs["site"] == site_tok]
+            ls_design = sub if not sub.empty else None
+    except Exception as exc:  # Landsat is an optional overlay; EMIT panels still render.
+        print(f"  [brdf_cos_sza] Landsat panel skipped: {exc}")
+
+    return ({"design": pd.read_csv(csv), "landsat_design": ls_design,
+             "site": site_tok, "target_wl": cfg.brdf_target_wl},
+            f"{csv.name} ({highlight})"
+            + ("; +Landsat" if ls_design is not None else "; EMIT-only"))
 
 
 def _load_brdf_single_channel(cfg):
@@ -101,6 +118,8 @@ def _load_brdf_single_channel(cfg):
     if not csv.exists():
         return None, f"{csv.name} not found — run scripts/run_brdf_assemble.py first."
     obs = pd.read_csv(csv, parse_dates=["datetime"])
+    # Drop non-invariant sites from the FIT only (they stay in the design/figures).
+    obs, _ = brdf_drift.apply_drift_exclusion(obs, cfg)
     joint = {p: brdf_drift.fit_joint(obs, p) for p in ("rad", "rfl")}
     boots = {p: brdf_drift.bootstrap_joint_gamma(obs, p, cfg.brdf_n_bootstrap)
              for p in ("rad", "rfl")}
@@ -120,7 +139,7 @@ def _load_brdf_site_spectra(cfg):
     the pooled drift fit uses, so this figure is a faithful picture of the surfaces
     that went into the analysis. Reads the cached per-scene per-channel CSVs.
     """
-    from emit_pics import brdf_drift
+    from emit_pics import brdf_drift, landsat_brdf
     roster, _, _ = brdf_drift.resolve_roster(cfg)
     if not roster:
         return None, "no BRDF roster (brdf.site_patches empty)."
@@ -128,9 +147,13 @@ def _load_brdf_site_spectra(cfg):
     if not spectra:
         why = "; ".join(f"{n['site']}: {n['note']}" for n in notes)
         return None, f"no usable PICS ({why})."
+    # Landsat 9 mean TOA spectra (panel a); same roster and QC gate.
+    ls_spectra, _ = landsat_brdf.landsat_site_mean_spectra(roster, cfg)
     dropped = [n["site"] for n in notes if not n["kept"]]
     tail = f"; dropped {', '.join(dropped)}" if dropped else ""
-    return {"spectra": spectra}, f"{len(spectra)} PICS mean spectra{tail}"
+    ls_tail = f"; Landsat {len(ls_spectra)} PICS" if ls_spectra else "; Landsat none"
+    return ({"spectra": spectra, "landsat_spectra": ls_spectra or None},
+            f"{len(spectra)} PICS mean spectra{tail}{ls_tail}")
 
 
 def _load_cos_sza_corr(cfg):
@@ -214,6 +237,15 @@ def _load_temporal_coverage(cfg):
         return None, f"{des_path.name} not found — run scripts/run_brdf_assemble.py first."
     des = pd.read_csv(des_path, parse_dates=["datetime"])
 
+    # Landsat BRDF scenes (same best patch per site, QC-surviving) for the 3rd column.
+    from emit_pics import brdf_drift, landsat_brdf
+    ls_obs = None
+    try:
+        roster, _, _ = brdf_drift.resolve_roster(cfg)
+        ls_obs, _, _, _ = landsat_brdf.assemble_design_landsat(roster, cfg)
+    except Exception as exc:  # Landsat is an optional column; EMIT columns still render.
+        print(f"  [temporal_coverage] Landsat column skipped: {exc}")
+
     sites_data = []
     for s in order:
         tok = canonical_token(s)
@@ -225,16 +257,44 @@ def _load_temporal_coverage(cfg):
         pairs = d.drop_duplicates("pair_id")[["t1_dt", "t2_dt", "SZA_t1", "SZA_t2"]]
         brdf = (des.loc[des["site"] == tok, ["datetime", "sza_mean"]]
                 .sort_values("datetime"))
+        if ls_obs is not None:
+            ls = (ls_obs.loc[ls_obs["site"] == tok, ["datetime", "sza_mean"]]
+                  .sort_values("datetime"))
+        else:
+            ls = brdf.iloc[0:0]
         sites_data.append({
             "name": s.replace("_", " "),
             "site": tok,
             "pairs": pairs.reset_index(drop=True),
             "dates": brdf["datetime"].to_numpy(),
             "sza": brdf["sza_mean"].to_numpy(float),
+            "ls_dates": pd.to_datetime(ls["datetime"], utc=True)
+                          .dt.tz_localize(None).to_numpy(),
+            "ls_sza": ls["sza_mean"].to_numpy(float),
             "n_pairs": int(len(pairs)),
             "n_brdf": int(len(brdf)),
+            "n_landsat": int(len(ls)),
         })
-    return {"sites_data": sites_data}, f"{len(sites_data)} PICS temporal coverage"
+    return ({"sites_data": sites_data},
+            f"{len(sites_data)} PICS temporal coverage"
+            + ("" if ls_obs is not None else " (EMIT only)"))
+
+
+def _load_landsat_invariance(cfg):
+    """Landsat invariance inputs: per-site + leave-one-out drift spectra (all 7 bands).
+
+    Reads the tidy tables written by ``scripts/run_landsat_brdf_robustness.py``
+    (``landsat_persite_drift_spectrum.csv`` and ``landsat_loo_drift_spectrum.csv``
+    under ``paths.LS_BRDF_DIR``) — no recompute.
+    """
+    ps = paths.LS_BRDF_DIR / "landsat_persite_drift_spectrum.csv"
+    loo = paths.LS_BRDF_DIR / "landsat_loo_drift_spectrum.csv"
+    for p in (ps, loo):
+        if not p.exists():
+            return None, (f"{p.name} not found — run "
+                          "scripts/run_landsat_brdf_robustness.py first.")
+    return ({"persite": pd.read_csv(ps), "loo": pd.read_csv(loo)},
+            f"{ps.name} + {loo.name}")
 
 
 #: figure key -> {name (output stem; ``{wl}`` filled from brdf.target_wl), loader,
@@ -269,6 +329,9 @@ FIGURES = {
     "temporal_coverage": {"name": "temporal_coverage",
                           "load": _load_temporal_coverage,
                           "build": figures.temporal_coverage},
+    "landsat_invariance": {"name": "landsat_invariance_spectra",
+                           "load": _load_landsat_invariance,
+                           "build": figures.landsat_invariance_spectra},
     "cos_sza_time_corr": {"name": "cos_sza_time_corr",
                           "load": _load_cos_sza_corr,
                           "build": figures.cos_sza_time_corr},

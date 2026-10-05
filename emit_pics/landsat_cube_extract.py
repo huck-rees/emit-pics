@@ -78,23 +78,41 @@ FILL = 0
 # STAC SEARCH / SCENE DISCOVERY
 # ============================================================
 def search_scenes(catalog, collection, patch_wgs84, date_start, date_end, *,
-                  platform="landsat-9", max_cloud=100.0):
+                  platform="landsat-9", max_cloud=100.0, dedupe_overpass=True,
+                  max_retries=4, backoff=3):
     """Return Landsat 9 scenes that FULLY CONTAIN the patch, sorted by datetime.
 
-    Mirrors the notebook's discovery: a plain STAC ``intersects`` also returns
-    edge-clipping / adjacent-WRS-path scenes that cover the patch only partially,
-    so we keep only scenes whose footprint fully contains it and whose scene-level
-    cloud cover is under *max_cloud*. Cloud filtering is client-side so it behaves
-    identically across STAC servers.
+    A plain STAC ``intersects`` also returns edge-clipping / adjacent-WRS-path
+    scenes that cover the patch only partially, so we keep only scenes whose
+    footprint fully contains it and whose scene-level cloud cover is under
+    *max_cloud* (client-side, so it behaves identically across STAC servers).
+
+    When *dedupe_overpass* is set, WRS row-overlap duplicates are collapsed to one
+    frame per overpass (see :func:`_dedupe_overpass`) — a patch in the along-track
+    overlap of two rows is otherwise imaged twice per pass, which would double-count
+    in the fit. The LandsatLook STAC intermittently 500s on pagination, so the
+    materialization is retried up to *max_retries* times with linear *backoff*.
 
     Returns a list of ``pystac.Item`` in acquisition-time order (all qualifying
-    scenes — the caller loops them into the time series, not just the least cloudy).
+    overpasses — the caller loops them into the time series).
     """
-    items = list(catalog.search(
+    import time
+    from pystac_client.exceptions import APIError
+
+    search = catalog.search(
         collections=[collection],
         intersects=patch_wgs84.__geo_interface__,
         datetime=f"{date_start}/{date_end}",
-    ).items())
+    )
+    items = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            items = list(search.items())
+            break
+        except APIError:
+            if attempt == max_retries:
+                raise
+            time.sleep(backoff * attempt)      # LandsatLook 500s intermittently on paging
 
     def _plat(it):
         return str(it.properties.get("platform", "")).lower().replace("_", "-")
@@ -108,7 +126,38 @@ def search_scenes(catalog, collection, patch_wgs84, date_start, date_end, *,
 
     keep = [it for it in items
             if _plat(it) == platform and _cloud(it) <= max_cloud and _covers(it)]
+    if dedupe_overpass:
+        keep = _dedupe_overpass(keep, patch_wgs84)
     return sorted(keep, key=lambda it: it.properties.get("datetime", ""))
+
+
+def _dedupe_overpass(items, patch_wgs84):
+    """Collapse WRS row-overlap duplicates to one frame per overpass.
+
+    A patch sitting in the along-track overlap of two WRS rows is imaged twice in
+    a single overpass (adjacent frames ~24 s apart, near-identical geometry);
+    letting both into the fit double-counts that acquisition. Scenes are grouped by
+    ``(acquisition date, WRS path)`` — which uniquely identifies one overpass (a
+    path revisits only every 16 days) without merging genuinely distinct paths —
+    and within each group the frame whose footprint centroid is nearest the patch
+    centroid (the most centered) is kept.
+    """
+    from collections import defaultdict
+
+    pc = patch_wgs84.centroid
+    groups = defaultdict(list)
+    for it in items:
+        date = str(it.properties.get("datetime", ""))[:10]
+        path = it.properties.get("landsat:wrs_path")
+        groups[(date, path)].append(it)
+
+    kept = []
+    for grp in groups.values():
+        if len(grp) == 1:
+            kept.append(grp[0])
+        else:
+            kept.append(min(grp, key=lambda it: shape(it.geometry).centroid.distance(pc)))
+    return kept
 
 
 # ============================================================

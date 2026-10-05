@@ -174,6 +174,10 @@ def main() -> None:
               "Run scripts/run_brdf_assemble.py first.")
         sys.exit(1)
     obs = pd.read_csv(design_path, parse_dates=["datetime"])
+    # Drop non-invariant sites from the FIT only (they stay in the design/figures).
+    obs, dropped = brdf_drift.apply_drift_exclusion(obs, cfg)
+    if dropped:
+        print(f"Excluded from drift fit (not invariant): {', '.join(dropped)}")
     sites = sorted(obs["site"].unique())
     T0 = obs["datetime"].min()
     site_colors = {s: cm.tab10(i % 10) for i, s in enumerate(sites)}

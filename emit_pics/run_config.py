@@ -64,6 +64,11 @@ class RunConfig:
     # (shares the global drift.alpha and qc.require_review knobs)
     brdf_site_patches: dict = field(default_factory=dict)
     brdf_exclude_sites: list = field(default_factory=list)
+    #: Sites kept in the design table and all figures but dropped from the pooled
+    #: EMIT drift FIT because the Landsat control found them not temporally
+    #: invariant (e.g. Mauritania_1). Distinct from brdf_exclude_sites, which
+    #: removes a site from the pipeline entirely (coverage).
+    brdf_drift_exclude_sites: list = field(default_factory=list)
     #: Optional BRDF-only output sub-namespace (e.g. "20km") so a patch-size
     #: sensitivity run nests under data/brdf/<label>/ instead of overwriting the
     #: baseline BRDF products. "" = flat (default). See paths.set_brdf_label.
@@ -74,10 +79,6 @@ class RunConfig:
     brdf_per_site_boot: int = 500
     brdf_spectrum_n_boot: int = 300
     brdf_gamma_cap: float = 500.0
-    # --- temporal jackknife (leave-one-epoch-out; reuses brdf spectrum knobs) ---
-    #: "equal_count" (n contiguous equal-size blocks) or "calendar_year".
-    jackknife_block_scheme: str = "equal_count"
-    jackknife_n_blocks: int = 5
     # --- extraction ---
     cache_pixels: bool = True
     want_obs: bool = True
@@ -128,12 +129,12 @@ def load_config(path=None) -> RunConfig:
     qc, spectra, drift = sec("qc"), sec("spectra"), sec("drift")
     extract, gs, pg = sec("extract"), sec("granule_search"), sec("patch_gen")
     brdf, radiometry = sec("brdf"), sec("radiometry")
-    jackknife = sec("jackknife")
 
     # BRDF roster: keep only sites with a patch id set (drop null/blank entries).
     brdf_site_patches = {str(s): str(p) for s, p in (brdf.get("site_patches") or {}).items()
                          if p not in (None, "")}
     brdf_exclude_sites = [str(s) for s in (brdf.get("exclude_sites") or [])]
+    brdf_drift_exclude_sites = [str(s) for s in (brdf.get("drift_exclude_sites") or [])]
 
     # Derived-output namespace: the corrected run is ALWAYS the canonical (flat)
     # baseline; only an uncorrected run is nested, under `variant_label`
@@ -161,6 +162,7 @@ def load_config(path=None) -> RunConfig:
         drift_seed=int(drift.get("seed", 0)),
         brdf_site_patches=brdf_site_patches,
         brdf_exclude_sites=brdf_exclude_sites,
+        brdf_drift_exclude_sites=brdf_drift_exclude_sites,
         brdf_label=str(brdf.get("label", "") or ""),
         brdf_target_wl=float(brdf.get("target_wl", 858.0)),
         brdf_min_scenes=int(brdf.get("min_scenes", 4)),
@@ -168,8 +170,6 @@ def load_config(path=None) -> RunConfig:
         brdf_per_site_boot=int(brdf.get("per_site_boot", 500)),
         brdf_spectrum_n_boot=int(brdf.get("spectrum_n_boot", 300)),
         brdf_gamma_cap=float(brdf.get("gamma_cap", 500.0)),
-        jackknife_block_scheme=str(jackknife.get("block_scheme", "equal_count")),
-        jackknife_n_blocks=int(jackknife.get("n_blocks", 5)),
         cache_pixels=bool(extract.get("cache_pixels", True)),
         want_obs=bool(extract.get("want_obs", True)),
         filter_agg_flag=bool(extract.get("filter_agg_flag", False)),
