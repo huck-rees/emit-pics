@@ -72,6 +72,16 @@ def main() -> None:
               f"(step 6) for the relevant patches first.")
         sys.exit(1)
 
+    # Drop non-invariant PICS (shared with the BRDF fit) so both EMIT drift methods
+    # use the same four invariant sites. M1 stays in the raw delta tables and figures.
+    excl = {s.replace(" ", "_") for s in cfg.brdf_drift_exclude_sites}
+    if excl:
+        norm = df["PICS_ID"].astype(str).str.replace(" ", "_", regex=False)
+        dropped = sorted(norm[norm.isin(excl)].unique())
+        df = df[~norm.isin(excl)].reset_index(drop=True)
+        if dropped:
+            print(f"Excluded from drift fit (not invariant): {', '.join(dropped)}")
+
     print(f"Patch size {PATCH_SIZE} km [matched-pairs bootstrap, {N_BOOTSTRAP} iters, "
           f"seed {SEED}]: {len(df)} per-patch row(s) | {df['PICS_ID'].nunique()} PICS "
           f"| {df['patch_id'].nunique()} patch(es) | {df['pair_id'].nunique()} pair(s) "
