@@ -71,6 +71,8 @@ brdf:
   # doesn't overwrite the baseline BRDF results. "" / omitted = flat (default).
   # label: ""
   target_wl: 858.0         # nm; nearest channel is used for the single-channel fit
+  single_channel_wl: 2204  # nm; display channel for the single-channel figure only
+                           # (SWIR2, nearest Landsat OLI-2 band); Fig.3 stays at target_wl
   min_scenes: 4            # per-site post-QC floor; sites below are dropped
   n_bootstrap: 1000        # resamples for the pooled shared-gamma CI
   per_site_boot: 500       # resamples for each site's standalone-gamma CI (§4b)

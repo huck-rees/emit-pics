@@ -74,6 +74,10 @@ class RunConfig:
     #: baseline BRDF products. "" = flat (default). See paths.set_brdf_label.
     brdf_label: str = ""
     brdf_target_wl: float = 858.0
+    #: Display wavelength for the single-channel BRDF figure only (nearest channel
+    #: is used). None -> use brdf_target_wl. Lets that figure show a SWIR channel
+    #: while Fig. 3 (cos-SZA) stays at the NIR target_wl.
+    brdf_single_channel_wl: float = None
     brdf_min_scenes: int = 4
     brdf_n_bootstrap: int = 1000
     brdf_per_site_boot: int = 500
@@ -135,6 +139,8 @@ def load_config(path=None) -> RunConfig:
                          if p not in (None, "")}
     brdf_exclude_sites = [str(s) for s in (brdf.get("exclude_sites") or [])]
     brdf_drift_exclude_sites = [str(s) for s in (brdf.get("drift_exclude_sites") or [])]
+    _scwl = brdf.get("single_channel_wl")
+    brdf_single_channel_wl = float(_scwl) if _scwl not in (None, "") else None
 
     # Derived-output namespace: the corrected run is ALWAYS the canonical (flat)
     # baseline; only an uncorrected run is nested, under `variant_label`
@@ -165,6 +171,7 @@ def load_config(path=None) -> RunConfig:
         brdf_drift_exclude_sites=brdf_drift_exclude_sites,
         brdf_label=str(brdf.get("label", "") or ""),
         brdf_target_wl=float(brdf.get("target_wl", 858.0)),
+        brdf_single_channel_wl=brdf_single_channel_wl,
         brdf_min_scenes=int(brdf.get("min_scenes", 4)),
         brdf_n_bootstrap=int(brdf.get("n_bootstrap", 1000)),
         brdf_per_site_boot=int(brdf.get("per_site_boot", 500)),

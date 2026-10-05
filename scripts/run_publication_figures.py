@@ -113,6 +113,7 @@ def _load_brdf_single_channel(cfg):
     and the fits use fixed seeds, so recomputing here is both necessary and exactly
     reproduces the BRDF step — the same on-the-fly pattern the other builders use.
     """
+    import numpy as np
     from emit_pics import brdf_drift
     csv = paths.brdf_design()
     if not csv.exists():
@@ -120,14 +121,32 @@ def _load_brdf_single_channel(cfg):
     obs = pd.read_csv(csv, parse_dates=["datetime"])
     # Drop non-invariant sites from the FIT only (they stay in the design/figures).
     obs, _ = brdf_drift.apply_drift_exclusion(obs, cfg)
-    joint = {p: brdf_drift.fit_joint(obs, p) for p in ("rad", "rfl")}
-    boots = {p: brdf_drift.bootstrap_joint_gamma(obs, p, cfg.brdf_n_bootstrap)
-             for p in ("rad", "rfl")}
+
+    # Display channel: brdf.single_channel_wl if set (e.g. the SWIR2 band nearest
+    # Landsat OLI-2), else the NIR target_wl. The design table carries rho only at
+    # target_wl, so recompute per-scene rho at the chosen band from the cached CSVs.
+    wl_want = cfg.brdf_single_channel_wl or cfg.brdf_target_wl
+    ref = brdf_drift.scene_perchannel(obs.iloc[0]["site"], obs.iloc[0]["patch"],
+                                      obs.iloc[0]["timestamp"], "rfl")
+    if ref is None:
+        return None, "first design scene has no reflectance CSV; cannot set band grid."
+    wlgrid, _excl, _fb = brdf_drift.water_vapor_mask(ref)
+    bidx = int(np.abs(wlgrid - wl_want).argmin())
+    wl_used = float(wlgrid[bidx])
+
+    joint, boots = {}, {}
+    for p in ("rad", "rfl"):
+        M = brdf_drift.channel_matrix(obs, p, len(wlgrid),
+                                      earth_sun_normalize=cfg.earth_sun_normalize,
+                                      e0_method=cfg.e0_method)
+        frame = obs.copy()
+        frame[f"rho_{p}"] = M[:, bidx]
+        frame = frame[np.isfinite(frame[f"rho_{p}"])]
+        joint[p] = brdf_drift.fit_joint(frame, p)
+        boots[p] = brdf_drift.bootstrap_joint_gamma(frame, p, cfg.brdf_n_bootstrap)
     T0 = obs["datetime"].min()
-    return ({"joint": joint, "boots": boots, "T0": T0,
-             "target_wl": cfg.brdf_target_wl},
-            f"{csv.name} (band ≈ {cfg.brdf_target_wl:.0f} nm, "
-            f"{obs['site'].nunique()} sites)")
+    return ({"joint": joint, "boots": boots, "T0": T0, "target_wl": wl_used},
+            f"{csv.name} (band ≈ {wl_used:.0f} nm, {obs['site'].nunique()} sites)")
 
 
 def _load_brdf_site_spectra(cfg):
@@ -373,7 +392,9 @@ def main(argv=None) -> int:
     paths.set_variant(cfg.output_variant)   # nest derived outputs under an active radiometry variant
     paths.set_brdf_label(cfg.brdf_label)    # read BRDF products from the labelled sub-namespace, if any
     themes = ["manuscript", "ppt"] if args.theme == "both" else [args.theme]
-    wl_tag = f"{cfg.brdf_target_wl:.0f}"     # fills the ``{wl}`` slot in wavelength-tagged names
+    # fills the ``{wl}`` slot; the only wavelength-tagged figure is the single-channel
+    # one, which displays brdf.single_channel_wl (falls back to the NIR target_wl).
+    wl_tag = f"{(cfg.brdf_single_channel_wl or cfg.brdf_target_wl):.0f}"
     n_written = 0
     for key in args.figures:
         spec = FIGURES[key]
