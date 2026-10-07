@@ -46,7 +46,7 @@ THEMES = ("manuscript", "ppt")
 # encoding), as the RSE spec requires.
 PRODUCT_STYLE = {
     "rad": {"color": "#0072B2", "marker": "o", "ls": "-"},    # blue,  circle, solid
-    "rfl": {"color": "#009E73", "marker": "s", "ls": "--"},   # green, square, dashed
+    "rfl": {"color": "#E69F00", "marker": "s", "ls": "--"},   # orange, square, dashed
 }
 
 #: Single colour for significant points — used in BOTH panels and the legend so

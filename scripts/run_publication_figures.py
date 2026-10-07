@@ -316,6 +316,31 @@ def _load_landsat_invariance(cfg):
             f"{ps.name} + {loo.name}")
 
 
+def _load_emit_drift_overlay(cfg):
+    """EMIT drift spectrum overlay: the 4-site matched-pairs + BRDF per-channel tables.
+
+    Reads ``data/drift/{size}_mp_drift.csv`` and ``data/brdf/brdf_drift_spectrum.csv``.
+    """
+    brdf_csv = paths.brdf_drift_spectrum()
+    mp_csv = paths.drift(cfg.patch_size)
+    for c in (mp_csv, brdf_csv):
+        if not c.exists():
+            return None, f"{c.name} not found — run the matched-pairs/BRDF drift first."
+    return ({"mp": pd.read_csv(mp_csv), "brdf": pd.read_csv(brdf_csv)},
+            f"{mp_csv.name} + {brdf_csv.name}")
+
+
+def _load_emit_oli2_bands(cfg):
+    """OLI-2 band comparison: ``data/emit_oli2_compare/band_drift_comparison.csv``
+    (from ``scripts/run_emit_oli2_band_comparison.py``). No recompute.
+    """
+    bands_csv = paths.DATA / "emit_oli2_compare" / "band_drift_comparison.csv"
+    if not bands_csv.exists():
+        return None, (f"{bands_csv.name} not found — run "
+                      "scripts/run_emit_oli2_band_comparison.py first.")
+    return {"bands": pd.read_csv(bands_csv)}, bands_csv.name
+
+
 #: figure key -> {name (output stem; ``{wl}`` filled from brdf.target_wl), loader,
 #: builder}. No manuscript numbers — those churn as the paper is edited, so each
 #: figure carries a stable descriptive name instead.
@@ -351,6 +376,12 @@ FIGURES = {
     "landsat_invariance": {"name": "landsat_invariance_spectra",
                            "load": _load_landsat_invariance,
                            "build": figures.landsat_invariance_spectra},
+    "emit_drift_overlay": {"name": "emit_drift_spectrum_overlay",
+                           "load": _load_emit_drift_overlay,
+                           "build": figures.emit_drift_spectrum_overlay},
+    "emit_oli2_bands": {"name": "emit_oli2_band_comparison",
+                        "load": _load_emit_oli2_bands,
+                        "build": figures.emit_oli2_band_comparison},
     "cos_sza_time_corr": {"name": "cos_sza_time_corr",
                           "load": _load_cos_sza_corr,
                           "build": figures.cos_sza_time_corr},

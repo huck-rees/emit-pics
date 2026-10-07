@@ -47,7 +47,7 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_raw",
         ``"A3, A5, L1, L4"``). ``None`` (the default) leaves the primary figure
         untouched.
     ylim : tuple or None
-        Shared y-axis limits (%/yr) for both panels; ``None`` autoscales. Points
+        Shared y-axis limits (% yr$^{-1}$) for both panels; ``None`` autoscales. Points
         or CI whiskers outside the range are clipped to the fixed scale.
     title : str
         On-figure title (slide theme only; the manuscript caption is in LaTeX).
@@ -59,7 +59,7 @@ def drift_spectrum(df, *, size="double", aspect=0.60, sig_col="sig_raw",
 
     for ax, prod, ylab in zip(
             axes, ("rad", "rfl"),
-            ("Radiance drift (%/yr)", "Reflectance drift (%/yr)")):
+            ("Radiance drift (% yr$^{-1}$)", "Reflectance drift (% yr$^{-1}$)")):
         d = df[df["product"] == prod].sort_values("wavelength")
         yerr = np.vstack([d["gamma_pct_yr"] - d["ci_lo_pct_yr"],
                           d["ci_hi_pct_yr"] - d["gamma_pct_yr"]])
@@ -134,7 +134,7 @@ def patch_size_drift_spectrum(cmp, *, window=11, tag10="10km", tag20="20km",
     size, aspect : str, float
         Theme width class and height/width.
     ylim : tuple or None
-        Fixed y-limits (%/yr) for both panels (default +/-3).
+        Fixed y-limits (% yr$^{-1}$) for both panels (default +/-3).
     colors : dict or None
         ``{tag: colour}`` override; defaults to Wong blue (10 km) / orange (20 km).
     """
@@ -146,7 +146,7 @@ def patch_size_drift_spectrum(cmp, *, window=11, tag10="10km", tag20="20km",
                              sharex=True, layout="constrained")
     for ax, prod, ylab in zip(
             axes, ("rad", "rfl"),
-            ("Radiance drift (%/yr)", "Reflectance drift (%/yr)")):
+            ("Radiance drift (% yr$^{-1}$)", "Reflectance drift (% yr$^{-1}$)")):
         d = cmp[cmp["product"] == prod].sort_values("wavelength")
         wl = d["wavelength"].to_numpy(float)
         segs = spectrum_segments(wl)   # break at the omitted water-vapor gaps
@@ -282,8 +282,8 @@ def brdf_site_mean_spectra(spectra, *, landsat_spectra=None, size="double",
 
 
 def persite_gamma_spectrum(persite_spec, *, size="double", aspect=0.75, ylim=None,
-                           rad_ylab="Radiance per-site drift (%/yr)",
-                           rfl_ylab="Reflectance per-site drift (%/yr)",
+                           rad_ylab="Radiance per-site drift (% yr$^{-1}$)",
+                           rfl_ylab="Reflectance per-site drift (% yr$^{-1}$)",
                            title="Per-site standalone drift spectrum"):
     """Per-site standalone ``gamma(lambda)`` as points — one marker per PICS per channel.
 
@@ -304,7 +304,7 @@ def persite_gamma_spectrum(persite_spec, *, size="double", aspect=0.75, ylim=Non
     size, aspect : str, float
         Theme width class and height/width.
     ylim : tuple or None
-        Fixed y-limits (%/yr) for both panels; ``None`` uses a robust 1–99
+        Fixed y-limits (% yr$^{-1}$) for both panels; ``None`` uses a robust 1–99
         percentile window per panel so a few SWIR outliers don't swamp the scale.
     """
     sc = style.scale()
@@ -344,8 +344,8 @@ def persite_gamma_spectrum(persite_spec, *, size="double", aspect=0.75, ylim=Non
 
 
 def loo_gamma_overlay(df, *, size="double", aspect=0.75, ylim=(-2.5, 2.5),
-                      rad_ylab="Radiance drift (%/yr)",
-                      rfl_ylab="Reflectance drift (%/yr)",
+                      rad_ylab="Radiance drift (% yr$^{-1}$)",
+                      rfl_ylab="Reflectance drift (% yr$^{-1}$)",
                       title="Leave-one-out drift spectra (all combos)"):
     """All leave-one-out combos' ``gamma(lambda)`` overlaid — rad (top) / rfl (bottom).
 
@@ -366,7 +366,7 @@ def loo_gamma_overlay(df, *, size="double", aspect=0.75, ylim=(-2.5, 2.5),
     size, aspect : str, float
         Theme width class and height/width.
     ylim : tuple or None
-        Shared y-limits (%/yr) for both panels; ``None`` uses a robust 1–99
+        Shared y-limits (% yr$^{-1}$) for both panels; ``None`` uses a robust 1–99
         percentile window per panel.
     rad_ylab, rfl_ylab : str
         Y-axis labels for the two panels.
@@ -662,9 +662,9 @@ def brdf_single_channel(joint, boots, T0, *, target_wl=None,
                        alpha=0.85, zorder=3)
         tg = np.linspace(float(r["t"].min()), float(r["t"].max()), 60)
         ax.plot(tg, 1 + r["gamma"] * tg, color="k", lw=1.6 * sc, zorder=4,
-                label=f"$1+\\gamma t$ ({100 * r['gamma']:+.3f} %/yr)")
+                label=f"$1+\\gamma t$ ({100 * r['gamma']:+.3f} % yr$^{{-1}}$)")
         ax.axhline(1.0, color="k", lw=0.6 * sc, ls=":", zorder=2)
-        ax.text(0.03, 0.05, f"$\\gamma$ = {100 * r['gamma']:+.3f} %/yr",
+        ax.text(0.03, 0.05, f"$\\gamma$ = {100 * r['gamma']:+.3f} % yr$^{{-1}}$",
                 transform=ax.transAxes, va="bottom", ha="left", fontsize=7 * sc,
                 family="monospace", zorder=6,
                 bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9))
@@ -695,7 +695,7 @@ def brdf_single_channel(joint, boots, T0, *, target_wl=None,
                  label=PROD_LABEL[p])
         axb.axvline(100 * joint[p]["gamma"], color=pc["color"], lw=1.4 * sc, zorder=4)
     axb.axvline(0.0, color="k", lw=0.8 * sc, ls="--", zorder=3)
-    axb.set_xlabel("Shared drift γ (%/yr)")
+    axb.set_xlabel("Shared drift γ (% yr$^{-1}$)")
     axb.set_ylabel("Bootstrap count")
     axb.legend(loc="upper right", frameon=True, framealpha=0.9, edgecolor="0.7")
 
@@ -1222,7 +1222,125 @@ def landsat_invariance_spectra(persite, loo, *, fig_w=6.5, fig_h=7.2,
         else:
             ax.tick_params(axis="y", labelleft=False)
 
-    fig.supxlabel("Drift $\\gamma$ (%/yr)", fontsize=8 * sc)
+    fig.supxlabel("Drift $\\gamma$ (% yr$^{-1}$)", fontsize=8 * sc)
+    return fig
+
+
+def emit_drift_spectrum_overlay(mp, brdf, *, fig_w=6.5, fig_h=4.8, ylim=(-3.0, 3.0)):
+    """EMIT per-channel drift spectrum: matched pairs overlaid by the BRDF fit.
+
+    Matched pairs as a grey 95% CI band, the BRDF fit as points with 95% bootstrap CI
+    whiskers, for EMIT TOA radiance (a) and surface reflectance (b). The shared drift
+    spectrum the BRDF and matched-pairs results sections both reference. ``mp`` /
+    ``brdf`` are the 4-site per-channel drift tables (``10_mp_drift.csv`` /
+    ``brdf_drift_spectrum.csv``).
+    """
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    from emit_pics.patch_size_sensitivity import spectrum_segments
+    sc = style.scale()
+    U = "% yr$^{-1}$"
+
+    fig, (ax_a, ax_b) = plt.subplots(2, 1, figsize=(fig_w, fig_h), sharex=True)
+    fig.subplots_adjust(left=0.13, right=0.98, top=0.975, bottom=0.10, hspace=0.10)
+
+    def panel(ax, prod, ylab, letter, legkw):
+        m = mp[(mp["product"] == prod) & (~mp["absorption_band"].astype(bool))].sort_values("wavelength")
+        wl = m["wavelength"].to_numpy(float)
+        lo = m["ci_low_pct_yr"].to_numpy(float); hi = m["ci_high_pct_yr"].to_numpy(float)
+        for seg in spectrum_segments(wl):
+            ax.fill_between(wl[seg], lo[seg], hi[seg], color="0.78", alpha=0.4, lw=0, zorder=1)
+        b = brdf[brdf["product"] == prod].copy()
+        if "unstable" in b.columns:
+            b = b[~b["unstable"].astype(bool)]
+        b = b.sort_values("wavelength")
+        bw = b["wavelength"].to_numpy(float); bg = b["gamma_pct_yr"].to_numpy(float)
+        blo = b["ci_lo_pct_yr"].to_numpy(float); bhi = b["ci_hi_pct_yr"].to_numpy(float)
+        sig = b["sig_raw"].astype(bool).to_numpy()
+        col = style.PRODUCT_STYLE[prod]["color"]
+        # not significant: hollow dot + normal whisker; significant: filled + thicker.
+        if (~sig).any():
+            ax.errorbar(bw[~sig], bg[~sig], yerr=[bg[~sig] - blo[~sig], bhi[~sig] - bg[~sig]],
+                        fmt="o", ms=2.2 * sc, mfc="white", mec=col, ecolor=col,
+                        elinewidth=0.45 * sc, capsize=0, zorder=3)
+        if sig.any():
+            ax.errorbar(bw[sig], bg[sig], yerr=[bg[sig] - blo[sig], bhi[sig] - bg[sig]],
+                        fmt="o", ms=2.8 * sc, mfc=col, mec=col, ecolor=col,
+                        elinewidth=0.85 * sc, capsize=0, zorder=4)
+        ax.axhline(0, color="k", lw=0.7, zorder=2)
+        ax.set_ylabel(ylab, fontsize=8 * sc)
+        if ylim:
+            ax.set_ylim(*ylim)
+        ax.tick_params(labelsize=7 * sc)
+        ax.text(0.006, 0.95, letter, transform=ax.transAxes, va="top", ha="left",
+                fontsize=12, fontweight="bold", fontfamily="Arial", zorder=6)
+        # legend in a white box near the top, ~25% in from the left to clear the data.
+        ax.legend(handles=[
+            Line2D([0], [0], marker="o", mfc="white", mec=col, color=col,
+                   ms=4 * sc, lw=0.8 * sc, label="BRDF, not significant"),
+            Line2D([0], [0], marker="o", mfc=col, mec=col, color=col,
+                   ms=4 * sc, lw=1.1 * sc, label="BRDF, 95% CI excludes 0"),
+            Patch(facecolor="0.78", alpha=0.4, label="Matched pairs, 95% CI")],
+            fontsize=5.6 * sc, framealpha=1.0, facecolor="white", edgecolor="0.6",
+            handletextpad=0.5, labelspacing=0.3, borderpad=0.5, **legkw)
+
+    panel(ax_a, "rad", f"EMIT TOA radiance drift,\n$\\gamma$ ({U})", "a)",
+          dict(loc="lower left"))
+    panel(ax_b, "rfl", f"EMIT surface reflectance drift,\n$\\gamma$ ({U})", "b)",
+          dict(loc="upper left", bbox_to_anchor=(0.25, 0.98)))
+    ax_b.set_xlabel("Wavelength (nm)", fontsize=8 * sc)
+    plt.setp(ax_a.get_xticklabels(), visible=False)
+    return fig
+
+
+def emit_oli2_band_comparison(bands, *, fig_w=6.5, fig_h=3.1):
+    """EMIT-vs-Landsat drift synthesised into the 7 OLI-2 reflective bands (Fig.~5 style).
+
+    One panel per band; in each, a dot + 95% bootstrap CI whisker for the measured
+    Landsat TOA reflectance drift, the EMIT-synthesised TOA radiance drift, and the
+    EMIT-synthesised surface reflectance drift (shared drift axis). ``bands`` is
+    ``band_drift_comparison.csv``.
+    """
+    from matplotlib.lines import Line2D
+    sc = style.scale()
+    U = "% yr$^{-1}$"
+    SER = [("landsat", "Landsat 9 OLI-2 TOA reflectance, $\\rho$", "#CC79A7"),
+           ("emit_rad", "EMIT TOA radiance, $L$", style.PRODUCT_STYLE["rad"]["color"]),
+           ("emit_rfl", "EMIT surface reflectance, $\\rho$", style.PRODUCT_STYLE["rfl"]["color"])]
+
+    fig, axes = plt.subplots(1, 7, figsize=(fig_w, fig_h), sharey=True)
+    fig.subplots_adjust(left=0.095, right=0.99, top=0.88, bottom=0.17, wspace=0.28)
+    bb = bands.dropna(subset=["gamma_pct_yr"])
+    ylo = min(float(bb["ci_lo_pct_yr"].min()), 0.0)
+    yhi = max(float(bb["ci_hi_pct_yr"].max()), 0.0)
+    pad = 0.10 * (yhi - ylo)
+    for j, (ax, bn) in enumerate(zip(axes, sorted(bands["band_n"].unique()))):
+        sub = bands[bands["band_n"] == bn]
+        center = float(sub["center_nm"].iloc[0])
+        for xi, (ser, _lab, c) in enumerate(SER):
+            r = sub[sub["series"] == ser]
+            if r.empty or not np.isfinite(r["gamma_pct_yr"].iloc[0]):
+                continue
+            gm = float(r["gamma_pct_yr"].iloc[0])
+            lo = float(r["ci_lo_pct_yr"].iloc[0]); hi = float(r["ci_hi_pct_yr"].iloc[0])
+            ax.errorbar(xi, gm, yerr=[[gm - lo], [hi - gm]], fmt="o", ms=4 * sc,
+                        color=c, ecolor=c, elinewidth=1.0 * sc, capsize=2 * sc,
+                        mec="white", mew=0.3 * sc, zorder=3)
+        ax.axhline(0, color="k", lw=0.7, ls="--", zorder=1)
+        ax.set_xlim(-0.6, 2.6)
+        ax.set_xticks([])
+        ax.set_ylim(ylo - pad, yhi + pad)
+        ax.set_title(f"{center:.0f} nm", fontsize=7 * sc, pad=2 * sc)
+        ax.grid(axis="y", color="0.92", lw=0.4, zorder=0)
+        ax.tick_params(labelsize=6.5 * sc)
+        ax.text(0.09, 0.97, f"{chr(ord('a') + j)})", transform=ax.transAxes,
+                va="top", ha="left", fontsize=12, fontweight="bold", fontfamily="Arial")
+    axes[0].set_ylabel(f"Band drift, $\\gamma$ ({U})", fontsize=8 * sc)
+    fig.legend(handles=[Line2D([0], [0], marker="o", ls="none", color=c, ms=5 * sc, label=lab)
+                        for _s, lab, c in SER],
+               loc="lower center", ncol=3, fontsize=6.8 * sc, framealpha=0.9,
+               edgecolor="0.7", bbox_to_anchor=(0.5, 0.05),
+               columnspacing=1.2, handletextpad=0.4)
     return fig
 
 
