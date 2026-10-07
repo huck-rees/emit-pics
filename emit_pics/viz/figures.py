@@ -561,7 +561,10 @@ def brdf_cos_sza(design, *, landsat_design=None, site="Libya_4", fig_width=6.5,
                            marker=st["marker"], edgecolors="k", linewidths=0.3 * sc,
                            alpha=0.85, zorder=3, label=str(s))
         else:
-            pc = style.PRODUCT_STYLE.get(key, style.PRODUCT_STYLE["rfl"])
+            # Landsat (toa) panel: the reddish-purple triangles used in the band
+            # comparison figure, so it is not confused with EMIT reflectance.
+            pc = ({"color": "#CC79A7", "marker": "^"} if key == "toa"
+                  else style.PRODUCT_STYLE[key])
             ax.scatter(x, y, s=13 * sc, color=pc["color"], marker=pc["marker"],
                        edgecolors="k", linewidths=0.3 * sc, alpha=0.85, zorder=3)
 
@@ -989,24 +992,27 @@ def _grid_on_ax(ax, patches, boundary, valcol, norm, cmap, sc):
 
 
 def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
-                      headers=("EMIT matched\npairs coverage", "EMIT BRDF\ntime series",
-                               "OLI-2 BRDF\ntime series")):
-    """Per-PICS temporal coverage: matched pairs (SZA vs time) + BRDF scene rug.
+                      headers=("OLI-2 BRDF\ntime series", "EMIT matched\npairs coverage",
+                               "EMIT BRDF\ntime series")):
+    """Per-PICS temporal coverage: OLI-2 scenes + EMIT matched pairs + EMIT BRDF scenes.
 
-    One row per PICS, two columns on a shared time axis:
+    One row per PICS, three columns on a shared time and SZA axis:
 
-    * **left** — the site's unique matched pairs. Each pair is two scenes plotted at
-      their acquisition date (x) and in-patch mean SZA (y), joined by a near-horizontal
+    * **left** — the QC-retained Landsat 9 OLI-2 BRDF scenes, one dot per scene at its
+      acquisition date (x) and in-patch mean SZA (y). This column carries the SZA tick
+      labels and the row name for the whole row.
+    * **middle** — the site's unique EMIT matched pairs. Each pair is two scenes plotted
+      at their acquisition date (x) and in-patch mean SZA (y), joined by a near-horizontal
       segment (the pair is SZA-matched, so the connector is nearly flat but spans the
       time gap that carries the drift signal).
-    * **right** — the QC-retained BRDF joint-fit scenes, one dot per scene at its
-      acquisition date (x) and in-patch mean SZA (y) — the SAME SZA axis as the left
-      panel, so the two columns read in parallel.
+    * **right** — the QC-retained EMIT BRDF joint-fit scenes, one dot per scene at its
+      acquisition date and in-patch mean SZA.
 
-    Every PICS is drawn in its stable Wong colour (:func:`style.site_styles`), so the
-    rows match the other publication figures. Both columns share one time range (a
-    scene lines up vertically across columns) and one SZA range. Only the bottom row
-    carries date labels and only the left column carries SZA ticks.
+    Sites excluded from the EMIT drift analyses (``show_emit`` False, e.g. Mauritania 1)
+    keep only their OLI-2 panel; their two EMIT cells are left blank because that data is
+    never used. Every PICS is drawn in its stable Wong colour (:func:`style.site_styles`),
+    so the rows match the other publication figures. All columns share one time range (a
+    scene lines up vertically across columns) and one SZA range.
 
     Parameters
     ----------
@@ -1014,12 +1020,13 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
         One per PICS, in display order, each with: ``name`` (str display label),
         ``site`` (canonical token, for the colour map), ``pairs`` (DataFrame with
         ``t1_dt``, ``t2_dt``, ``SZA_t1``, ``SZA_t2`` — one row per unique matched
-        pair), ``dates`` (datetime array of BRDF scenes) with matching ``sza`` (mean
-        SZA per scene), and the counts ``n_pairs`` / ``n_brdf``.
+        pair), ``dates`` / ``sza`` (EMIT BRDF scene dates and mean SZAs), ``ls_dates`` /
+        ``ls_sza`` (OLI-2 scenes), the counts ``n_pairs`` / ``n_brdf`` / ``n_landsat``,
+        and ``show_emit`` (whether to draw the two EMIT columns for this site).
     fig_w, fig_h : float
         Figure size in inches (fixed to the publication spec; default 6.5 × 6.0).
     headers : tuple
-        The two column titles, drawn over the top row.
+        The three column titles, drawn over the top row (OLI-2, matched pairs, EMIT BRDF).
     """
     import matplotlib.dates as mdates
     from matplotlib.gridspec import GridSpec
@@ -1028,8 +1035,8 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
     n = len(sites_data)
     styles = style.site_styles([s["site"] for s in sites_data])
 
-    # Shared time range across BOTH columns (pair endpoints + BRDF scene dates), so a
-    # scene aligns vertically between the two panels of every row.
+    # Shared time range across ALL columns (pair endpoints + EMIT and OLI-2 scene dates),
+    # so a scene aligns vertically between the panels of every row.
     all_dates = []
     for s in sites_data:
         p = s["pairs"]
@@ -1040,8 +1047,8 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
     dpad = (d1 - d0) * 0.03
     d0, d1 = d0 - dpad, d1 + dpad
 
-    # Shared SZA range across BOTH columns (matched-pair endpoints + BRDF scenes),
-    # so the left connectors and the right dots read on one common SZA axis.
+    # Shared SZA range across ALL columns, so the OLI-2 dots, the matched-pair
+    # connectors, and the EMIT BRDF dots read on one common SZA axis.
     all_sza = np.concatenate([
         np.r_[s["pairs"]["SZA_t1"].to_numpy(float),
               s["pairs"]["SZA_t2"].to_numpy(float),
@@ -1052,6 +1059,11 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
     spad = 0.10 * (shi - slo) if shi > slo else 2.0
     slo, shi = slo - spad, shi + spad
 
+    # Bottom-most visible row per column for the year tick labels: the OLI-2 column is
+    # always full, the two EMIT columns end at the last site not excluded from EMIT.
+    last_emit_row = max((i for i, s in enumerate(sites_data) if s.get("show_emit", True)),
+                        default=n - 1)
+
     fig = plt.figure(figsize=(fig_w, fig_h))
     gs = GridSpec(n, 3, figure=fig, left=0.115, right=0.99, top=0.925, bottom=0.055,
                   wspace=0.07, hspace=0.16, width_ratios=[1.0, 1.0, 1.0])
@@ -1059,60 +1071,70 @@ def temporal_coverage(sites_data, *, fig_w=6.5, fig_h=6.0,
 
     for i, s in enumerate(sites_data):
         c = styles[s["site"]]["color"]
-        ax_mp, ax_ts, ax_ls = axes[i]
-        p = s["pairs"]
-        t1 = pd.to_datetime(p["t1_dt"]); t2 = pd.to_datetime(p["t2_dt"])
-        y1 = p["SZA_t1"].to_numpy(float); y2 = p["SZA_t2"].to_numpy(float)
+        ax_ls, ax_mp, ax_ts = axes[i]   # columns: OLI-2 | EMIT matched pairs | EMIT BRDF
+        show_emit = s.get("show_emit", True)
 
-        # Matched-pairs panel: a connector per pair + a marker at each scene endpoint.
-        for a, b, ya, yb in zip(t1, t2, y1, y2):
-            ax_mp.plot([a, b], [ya, yb], color=c, lw=0.7 * sc, alpha=0.55,
-                       solid_capstyle="round", zorder=2)
-        ax_mp.scatter(np.r_[t1.values, t2.values], np.r_[y1, y2], s=18 * sc, color=c,
-                      edgecolors="white", linewidths=0.3 * sc, zorder=3)
-        ax_mp.set_ylim(slo, shi)
-        ax_mp.yaxis.set_major_locator(MaxNLocator(3))
-        ax_mp.tick_params(axis="y", labelsize=7 * sc, length=2 * sc)
-        ax_mp.text(0.015, 0.06, f"{s['n_pairs']} pairs", transform=ax_mp.transAxes,
-                   ha="left", va="bottom", fontsize=6.2 * sc, color="0.35",
-                   path_effects=_halo(1.4 * sc))
-
-        # BRDF panel: one dot per retained scene at its date and mean SZA, on the
-        # SAME SZA axis as the matched-pairs panel (semantic parallel; the left
-        # column carries the SZA tick labels for both).
-        ax_ts.scatter(pd.to_datetime(s["dates"]), np.asarray(s["sza"], float),
-                      s=18 * sc, color=c, edgecolors="white", linewidths=0.3 * sc,
-                      zorder=3)
-        ax_ts.set_ylim(slo, shi)
-        ax_ts.tick_params(axis="y", left=False, labelleft=False)
-        ax_ts.text(0.985, 0.94, f"n = {s['n_brdf']}", transform=ax_ts.transAxes,
-                   ha="right", va="top", fontsize=6.2 * sc, color="0.35",
-                   path_effects=_halo(1.4 * sc))
-
-        # Landsat BRDF panel: far more scenes on the SAME SZA axis (smaller markers
-        # so the denser cloud stays legible); shares the left column's SZA ticks.
+        # OLI-2 panel (left): one dot per retained scene; this column carries the SZA
+        # tick labels and the row name for all three columns.
         ax_ls.scatter(pd.to_datetime(s.get("ls_dates", [])),
                       np.asarray(s.get("ls_sza", []), float),
                       s=9 * sc, color=c, edgecolors="white", linewidths=0.2 * sc,
                       alpha=0.85, zorder=3)
         ax_ls.set_ylim(slo, shi)
-        ax_ls.tick_params(axis="y", left=False, labelleft=False)
+        ax_ls.yaxis.set_major_locator(MaxNLocator(3))
+        ax_ls.tick_params(axis="y", labelsize=7 * sc, length=2 * sc)
         ax_ls.text(0.985, 0.94, f"n = {s.get('n_landsat', 0)}", transform=ax_ls.transAxes,
                    ha="right", va="top", fontsize=6.2 * sc, color="0.35",
                    path_effects=_halo(1.4 * sc))
-
-        # Shared time axis on all panels; label years on the bottom row only.
-        for ax in (ax_mp, ax_ts, ax_ls):
-            ax.set_xlim(d0, d1)
-            ax.xaxis.set_major_locator(mdates.YearLocator())
-            ax.xaxis.set_major_formatter(mdates.DateFormatter("'%y"))
-            ax.tick_params(axis="x", labelbottom=(i == n - 1),
-                           labelsize=6.5 * sc, length=2 * sc)
-
         # Rotated PICS name identifying the row (black; only the data is coloured).
-        ax_mp.annotate(s["name"], xy=(-0.15, 0.5), xycoords="axes fraction",
+        ax_ls.annotate(s["name"], xy=(-0.15, 0.5), xycoords="axes fraction",
                        rotation=90, ha="center", va="center",
                        fontsize=8 * sc, fontweight="bold", color="black")
+
+        # EMIT matched-pairs (middle) and EMIT BRDF (right) panels: drawn only for sites
+        # used in the EMIT drift analyses; excluded sites keep blank cells.
+        if show_emit:
+            p = s["pairs"]
+            t1 = pd.to_datetime(p["t1_dt"]); t2 = pd.to_datetime(p["t2_dt"])
+            y1 = p["SZA_t1"].to_numpy(float); y2 = p["SZA_t2"].to_numpy(float)
+            # Matched-pairs panel: a connector per pair + a marker at each endpoint.
+            for a, b, ya, yb in zip(t1, t2, y1, y2):
+                ax_mp.plot([a, b], [ya, yb], color=c, lw=0.7 * sc, alpha=0.55,
+                           solid_capstyle="round", zorder=2)
+            ax_mp.scatter(np.r_[t1.values, t2.values], np.r_[y1, y2], s=18 * sc, color=c,
+                          edgecolors="white", linewidths=0.3 * sc, zorder=3)
+            ax_mp.set_ylim(slo, shi)
+            ax_mp.tick_params(axis="y", left=False, labelleft=False)
+            ax_mp.text(0.015, 0.06, f"{s['n_pairs']} pairs", transform=ax_mp.transAxes,
+                       ha="left", va="bottom", fontsize=6.2 * sc, color="0.35",
+                       path_effects=_halo(1.4 * sc))
+
+            # EMIT BRDF panel: one dot per retained scene at its date and mean SZA.
+            ax_ts.scatter(pd.to_datetime(s["dates"]), np.asarray(s["sza"], float),
+                          s=18 * sc, color=c, edgecolors="white", linewidths=0.3 * sc,
+                          zorder=3)
+            ax_ts.set_ylim(slo, shi)
+            ax_ts.tick_params(axis="y", left=False, labelleft=False)
+            ax_ts.text(0.985, 0.94, f"n = {s['n_brdf']}", transform=ax_ts.transAxes,
+                       ha="right", va="top", fontsize=6.2 * sc, color="0.35",
+                       path_effects=_halo(1.4 * sc))
+        else:
+            ax_mp.axis("off")
+            ax_ts.axis("off")
+
+        # Shared time axis; year labels on the bottom-most VISIBLE panel of each column.
+        ax_ls.set_xlim(d0, d1)
+        ax_ls.xaxis.set_major_locator(mdates.YearLocator())
+        ax_ls.xaxis.set_major_formatter(mdates.DateFormatter("'%y"))
+        ax_ls.tick_params(axis="x", labelbottom=(i == n - 1),
+                          labelsize=6.5 * sc, length=2 * sc)
+        if show_emit:
+            for ax in (ax_mp, ax_ts):
+                ax.set_xlim(d0, d1)
+                ax.xaxis.set_major_locator(mdates.YearLocator())
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("'%y"))
+                ax.tick_params(axis="x", labelbottom=(i == last_emit_row),
+                               labelsize=6.5 * sc, length=2 * sc)
 
     axes[0][0].set_title(headers[0], fontsize=7.5 * sc, fontweight="bold", pad=4 * sc)
     axes[0][1].set_title(headers[1], fontsize=7.5 * sc, fontweight="bold", pad=4 * sc)

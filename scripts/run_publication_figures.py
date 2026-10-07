@@ -250,6 +250,8 @@ def _load_temporal_coverage(cfg):
     """
     from emit_pics.config import canonical_token
     order = ["Libya_1", "Libya_4", "Algeria_3", "Algeria_5", "Mauritania_1"]
+    # Sites dropped from the EMIT drift analyses keep only their OLI-2 column.
+    excluded = {canonical_token(x) for x in cfg.brdf_drift_exclude_sites}
 
     des_path = paths.brdf_design()
     if not des_path.exists():
@@ -293,6 +295,7 @@ def _load_temporal_coverage(cfg):
             "n_pairs": int(len(pairs)),
             "n_brdf": int(len(brdf)),
             "n_landsat": int(len(ls)),
+            "show_emit": tok not in excluded,
         })
     return ({"sites_data": sites_data},
             f"{len(sites_data)} PICS temporal coverage"
