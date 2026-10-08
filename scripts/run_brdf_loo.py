@@ -144,6 +144,35 @@ def main() -> int:
         for p in style.save(fig, "brdf_loo_gamma_overlay"):
             print(f"  figure -> {p}")
 
+    # 7. Leave-TWO-out companion (Appendix C): drop two sites and pool the rest. With
+    #    four invariant PICS this is C(4,2) = 6 combos, each pooling two sites — a
+    #    harder robustness check than leave-one-out (fewer sites per fit).
+    l2o_combos = brdf_loo.leave_k_out_combos(sites, 2)
+    if len(sites) >= 4 and l2o_combos:
+        print(f"\nLeave-two-out: fitting {len(l2o_combos)} combos x {len(PRODUCTS)} "
+              f"products x {len(fit_bands)} channels ...")
+        l2o = brdf_loo.leave_k_out_drift_spectra(
+            obs, mats, wlgrid, fit_bands, k=2, n_boot=cfg.brdf_spectrum_n_boot,
+            gamma_cap=cfg.brdf_gamma_cap, alpha=cfg.alpha)
+        l2o_combos_tbl = pd.DataFrame([{
+            "combo": c["label"], "left_out": c["left_out_label"],
+            "kept_sites": ", ".join(c["included"]),
+            "n_scenes": int(sum(int(counts.get(s, 0)) for s in c["included"])),
+        } for c in l2o_combos])
+        l2o_summary = brdf_loo.combo_summary(l2o)
+        for name, tbl in (("l2o_drift_spectrum", l2o),
+                          ("l2o_combos", l2o_combos_tbl),
+                          ("l2o_summary", l2o_summary)):
+            path = out_dir / f"{name}.csv"
+            tbl.to_csv(path, index=False)
+            provenance.write_sidecar(path, cfg.as_dict())
+            print(f"  data -> {path}")
+        with style.theme("manuscript"):
+            fig = figures.loo_gamma_overlay(
+                l2o, title="Leave-two-out drift spectra (all combos)")
+            for p in style.save(fig, "brdf_l2o_gamma_overlay"):
+                print(f"  figure -> {p}")
+
     print("Done.")
     return 0
 

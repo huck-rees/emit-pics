@@ -16,6 +16,8 @@ I/O and figure rendering.
 
 from __future__ import annotations
 
+from itertools import combinations
+
 import numpy as np
 import pandas as pd
 
@@ -115,6 +117,68 @@ def leave_one_out_drift_spectra(obs, mats, wlgrid, fit_bands, *, n_boot,
     df = pd.DataFrame(rows)
     # Significance = the 95% bootstrap CI excludes zero (matches the plotted
     # whiskers and the primary drift-spectrum convention; see run_brdf_drift_spectrum).
+    df["sig_raw"] = (df["ci_lo_pct_yr"] > 0) | (df["ci_hi_pct_yr"] < 0)
+    ci_hw = (df["ci_hi_pct_yr"] - df["ci_lo_pct_yr"]).abs() / 2
+    df["unstable"] = (~np.isfinite(df["gamma_pct_yr"])
+                      | (df["gamma_pct_yr"].abs() > gamma_cap)
+                      | (ci_hw > gamma_cap))
+    return df[LOO_SPECTRUM_COLS]
+
+
+def leave_k_out_combos(sites, k):
+    """One ``{left_out, left_out_label, included, label}`` per set of *k* sites dropped.
+
+    Generalises :func:`leave_one_out_combos` to dropping *k* sites at a time and
+    pooling the rest. With ``n`` sites there are ``C(n, k)`` combinations. ``label``
+    is the comma-joined abbreviations of the INCLUDED sites, ``left_out_label`` the
+    dropped ones.
+    """
+    sites = sorted(sites)
+    combos = []
+    for drop in combinations(sites, k):
+        inc = [s for s in sites if s not in drop]
+        combos.append({"left_out": list(drop), "left_out_label": combo_label(drop),
+                       "included": inc, "label": combo_label(inc)})
+    return combos
+
+
+def leave_k_out_drift_spectra(obs, mats, wlgrid, fit_bands, *, k, n_boot,
+                              gamma_cap, alpha, seed=2024):
+    """Per-channel pooled shared-``gamma`` drift for every leave-*k*-out combo.
+
+    The leave-one-out generalisation (:func:`leave_one_out_drift_spectra`): for each
+    of the ``C(n, k)`` ways to drop *k* sites, fit the pooled shared-``gamma`` drift
+    on the remaining ``n - k`` sites at every fit channel. The ``left_out`` column
+    holds the abbreviated dropped-site label; ``combo`` holds the kept-site label.
+    Same stratified within-site bootstrap and column schema
+    (:data:`LOO_SPECTRUM_COLS`) as the leave-one-out version, so a single-combo slice
+    drops straight into the spectrum/overlay builders.
+    """
+    products = list(mats)
+    site_all = obs["site"].to_numpy()
+    g_all = obs["g"].to_numpy(float)
+    t_all = obs["t"].to_numpy(float)
+    combos = leave_k_out_combos(pd.unique(site_all), k)
+
+    rows = []
+    for ci, combo in enumerate(combos):
+        keep = ~np.isin(site_all, combo["left_out"])
+        g, t, site = g_all[keep], t_all[keep], site_all[keep]
+        rng = np.random.default_rng(seed + 1000 * k + ci)   # stream per (k, combo)
+        for prod in products:
+            M = mats[prod][keep]
+            for b in fit_bands:
+                gam, (lo, hi), pval, n = channel_gamma(
+                    M[:, int(b)], g, t, site, n_boot, rng)
+                rows.append({
+                    "combo": combo["label"], "left_out": combo["left_out_label"],
+                    "product": prod, "band_index": int(b),
+                    "wavelength": float(wlgrid[int(b)]),
+                    "gamma_pct_yr": 100.0 * gam,
+                    "ci_lo_pct_yr": 100.0 * lo, "ci_hi_pct_yr": 100.0 * hi,
+                    "p_value": pval, "n": int(n)})
+
+    df = pd.DataFrame(rows)
     df["sig_raw"] = (df["ci_lo_pct_yr"] > 0) | (df["ci_hi_pct_yr"] < 0)
     ci_hw = (df["ci_hi_pct_yr"] - df["ci_lo_pct_yr"]).abs() / 2
     df["unstable"] = (~np.isfinite(df["gamma_pct_yr"])
