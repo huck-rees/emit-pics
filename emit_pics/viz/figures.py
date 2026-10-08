@@ -410,77 +410,114 @@ def loo_gamma_overlay(df, *, size="double", aspect=0.75, ylim=(-2.5, 2.5),
     return fig
 
 
-def cos_sza_time_corr(obs, corr, *, T0=None, size="double", aspect=0.62, ncol=3,
+def cos_sza_time_corr(emit_obs, emit_corr, ls_obs=None, ls_corr=None, *,
+                      order=None, T0=None, fig_w=6.5, fig_h=3.5,
                       title="Solar geometry vs time by PICS"):
-    """Per-site scatter of ``cos(theta)`` against ``t``, with Spearman rho / p.
+    """Two-row ``cos(theta)``-vs-``t`` scatter: Landsat 9 over EMIT, by PICS.
 
-    One panel per PICS laid out in two rows (:data:`ncol` columns; the trailing
-    unused cell is blanked). Each scene is drawn in that site's stable Wong colour
-    **and** marker (:func:`style.site_styles`, edged black) — the SAME colour/marker
-    identity as the single-channel BRDF figure. The site's Spearman rank
-    correlation between ``cos(SZA)`` and ``t`` and its p-value are printed inside
-    the panel with **no** bounding box or background. No trend line is drawn (the
-    statistic is rank-based). Panels share both axes so the sites are directly
-    comparable.
+    Columns are PICS in a fixed order. The **top** row is the Landsat 9 OLI-2 BRDF
+    scenes (all PICS); the **bottom** row is the EMIT BRDF scenes (only the invariant
+    PICS used in the drift fit, so an excluded site's EMIT cell is left blank). Each
+    panel scatters ``cos(SZA)`` against ``t`` in that site's stable Wong colour and
+    marker (:func:`style.site_styles`, edged black), prints the Spearman rank
+    correlation ``rho`` and its ``p``-value (no box), and carries a bold panel letter
+    top-left. No trend line is drawn (the statistic is rank-based). All panels share
+    one ``t`` axis and one ``cos(theta)`` axis so the sites read directly.
 
     Parameters
     ----------
-    obs : pandas.DataFrame
-        Pooled per-scene design table with ``site``, ``g`` (= ``cos(SZA)``), and
-        ``t`` (years since *T0*).
-    corr : pandas.DataFrame
-        Per-site Spearman table from
-        :func:`emit_pics.cos_sza_corr.site_cos_sza_time_corr`
-        (columns ``site``, ``spearman_rho``, ``p_value``).
+    emit_obs, ls_obs : pandas.DataFrame
+        Per-scene design tables with ``site``, ``g`` (= ``cos(SZA)``), ``t`` (years
+        since *T0*). ``ls_obs`` may be None (then the top row is blank).
+    emit_corr, ls_corr : pandas.DataFrame
+        Per-site Spearman tables (columns ``site``, ``spearman_rho``, ``p_value``).
+    order : list of str or None
+        Column (PICS) order; defaults to the sorted union of sites present.
     T0 : pandas.Timestamp or None
         Common time origin, for the x-axis label.
-    size, aspect : str, float
-        Theme width class and height/width.
-    ncol : int
-        Panel columns (default 3 → a 2×3 grid for five sites).
+    fig_w, fig_h : float
+        Figure size in inches (publication spec).
     title : str
         On-figure suptitle (slide theme only; the manuscript caption is in LaTeX).
     """
+    from matplotlib.gridspec import GridSpec
     sc = style.scale()
-    sites = sorted(obs["site"].unique())
-    styles = style.site_styles(sites)
-    stats = {r["site"]: (r["spearman_rho"], r["p_value"]) for _, r in corr.iterrows()}
 
-    nrow = int(np.ceil(len(sites) / ncol))
-    fig, axes = plt.subplots(nrow, ncol, figsize=style.figsize(size, aspect),
-                             sharex=True, sharey=True, squeeze=False,
-                             layout="constrained")
+    allsites = set(emit_obs["site"].unique())
+    ls_sites = set(ls_obs["site"].unique()) if ls_obs is not None else set()
+    allsites |= ls_sites
+    order = [s for s in (order or sorted(allsites)) if s in allsites]
+    ncol = len(order)
+    styles = style.site_styles(order)
+    emit_sites = set(emit_obs["site"].unique())
 
-    for k, s in enumerate(sites):
-        ax = axes.flat[k]
-        sub = obs[obs["site"] == s]
-        st = styles[s]
-        ax.scatter(sub["t"], sub["g"], s=16 * sc, color=st["color"],
-                   marker=st["marker"], edgecolors="k", linewidths=0.3 * sc,
-                   alpha=0.85, zorder=3)
-        rho, p = stats.get(s, (np.nan, np.nan))
-        ax.text(0.96, 0.04, f"$\\rho$ = {rho:+.2f}\n$p$ = {p:.2f}",
-                transform=ax.transAxes, va="bottom", ha="right",
-                fontsize=7 * sc, family="monospace", zorder=6)
-        ax.set_title(str(s).replace("_", " "), fontsize=8 * sc)
+    estats = {r["site"]: (r["spearman_rho"], r["p_value"]) for _, r in emit_corr.iterrows()}
+    lstats = ({r["site"]: (r["spearman_rho"], r["p_value"]) for _, r in ls_corr.iterrows()}
+              if ls_corr is not None else {})
 
-    for k in range(len(sites), nrow * ncol):     # blank the trailing unused cell(s)
-        axes.flat[k].set_axis_off()
+    # Shared t / cos(theta) ranges across both sensors.
+    frames = ([ls_obs] if ls_obs is not None else []) + [emit_obs]
+    allt = np.concatenate([f["t"].to_numpy(float) for f in frames])
+    allg = np.concatenate([f["g"].to_numpy(float) for f in frames])
+    tpad = 0.03 * (np.ptp(allt) or 1.0); gpad = 0.06 * (np.ptp(allg) or 1.0)
+    xlim = (allt.min() - tpad, allt.max() + tpad)
+    ylim = (allg.min() - gpad, allg.max() + gpad)
 
-    # x-label only on the lowest filled panel of each column (so the panel above a
-    # blanked cell still gets its ticks + label); y-label only on the left column.
-    xlab = f"t (yr since {T0.date()})" if T0 is not None else "t (yr)"
+    fig = plt.figure(figsize=(fig_w, fig_h))
+    gs = GridSpec(2, ncol, figure=fig, left=0.12, right=0.995, top=0.86, bottom=0.145,
+                  wspace=0.09, hspace=0.26)
+    axes = [[fig.add_subplot(gs[r, c]) for c in range(ncol)] for r in range(2)]
+
+    # (row tag, per-site obs, per-site stats, left-edge row label).
+    rows = [(ls_obs, ls_sites, lstats, "Landsat 9"),
+            (emit_obs, emit_sites, estats, "EMIT")]
+    filled = [[ (ls_obs is not None and s in ls_sites) for s in order],
+              [ s in emit_sites for s in order]]
+
+    letter = 0
+    for ri, (dfobs, rsites, stats, _rowlab) in enumerate(rows):
+        for c, s in enumerate(order):
+            ax = axes[ri][c]
+            if not filled[ri][c]:
+                ax.set_axis_off()
+                continue
+            sub = dfobs[dfobs["site"] == s]
+            st = styles[s]
+            ax.scatter(sub["t"], sub["g"], s=13 * sc, color=st["color"],
+                       marker=st["marker"], edgecolors="k", linewidths=0.3 * sc,
+                       alpha=0.85, zorder=3)
+            ax.set_xlim(*xlim); ax.set_ylim(*ylim)
+            rho, p = stats.get(s, (np.nan, np.nan))
+            ax.text(0.95, 0.05, f"$\\rho$={rho:+.2f}\n$p$={p:.2f}",
+                    transform=ax.transAxes, va="bottom", ha="right",
+                    fontsize=6.0 * sc, family="monospace", zorder=6,
+                    bbox=dict(facecolor="white", alpha=0.55, edgecolor="none",
+                              boxstyle="round,pad=0.15"))
+            ax.text(0.05, 0.95, f"{chr(ord('a') + letter)})", transform=ax.transAxes,
+                    va="top", ha="left", fontsize=8 * sc, fontweight="bold", zorder=6)
+            letter += 1
+            if ri == 0:
+                ax.set_title(str(s).replace("_", " "), fontsize=7.5 * sc, pad=3 * sc)
+
+    # y-label on the left column; x-label on the lowest filled panel of each column.
+    xlab = f"t (yr since {pd.Timestamp(T0).date()})" if T0 is not None else "t (yr)"
     for c in range(ncol):
-        rows = [r for r in range(nrow) if r * ncol + c < len(sites)]
-        if not rows:
-            continue
-        br = max(rows)
-        for r in rows:
-            axes[r, c].tick_params(labelbottom=(r == br))
-        axes[br, c].set_xlabel(xlab)
-    for r in range(nrow):
-        if r * ncol < len(sites):
-            axes[r, 0].set_ylabel(r"$\cos\,\theta$")
+        br = 1 if filled[1][c] else 0
+        for r in (0, 1):
+            if not filled[r][c]:
+                continue
+            ax = axes[r][c]
+            ax.tick_params(labelsize=6.5 * sc, length=2 * sc)
+            ax.tick_params(labelleft=(c == 0), labelbottom=(r == br))
+            if c == 0:
+                ax.set_ylabel(r"$\cos\,\theta$", fontsize=8 * sc)
+        axes[br][c].set_xlabel(xlab, fontsize=7.5 * sc)
+
+    # Bold sensor labels down the far left, one per row.
+    fig.text(0.022, 0.70, "Landsat 9", rotation=90, va="center", ha="center",
+             fontsize=8 * sc, fontweight="bold")
+    fig.text(0.022, 0.30, "EMIT", rotation=90, va="center", ha="center",
+             fontsize=8 * sc, fontweight="bold")
 
     if style.show_title():
         fig.suptitle(title)

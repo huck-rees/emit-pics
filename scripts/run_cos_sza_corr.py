@@ -37,42 +37,41 @@ def main() -> int:
     paths.set_variant(cfg.output_variant)   # nest derived outputs under an active radiometry variant
     paths.set_brdf_label(cfg.brdf_label)    # read BRDF products from the labelled sub-namespace, if any
 
-    # 1. Resolve the roster and assemble the pooled per-scene design table.
-    roster, excluded, unknown = brdf_drift.resolve_roster(cfg)
-    if not roster:
-        print("No BRDF roster (brdf.site_patches empty in run_config.yaml).")
+    # 1. Assemble both sensors' per-scene cos(SZA)/t designs on a shared origin:
+    #    Landsat 9 over all PICS, EMIT over the invariant PICS used in the drift fit.
+    data = cos_sza_corr.dual_sensor_design(cfg)
+    if data is None:
+        print("No usable BRDF design (roster empty or no EMIT scenes).")
         return 1
-    if excluded:
-        print(f"Excluded by config: {', '.join(excluded)}")
-    if unknown:
-        print(f"Unknown (not in sites.yaml), skipped: {', '.join(unknown)}")
+    T0 = data["T0"]
 
-    obs, _, T0, notes = brdf_drift.assemble_design(roster, cfg)
-    for n in notes:
-        flag = "kept" if n["kept"] else "DROP"
-        print(f"  [{flag}] {n['site']:<14} {n['note']}")
-    if obs is None or obs.empty:
-        print("No usable scenes across the roster; nothing to correlate.")
-        return 1
+    for label, corr in (("EMIT", data["emit_corr"]), ("Landsat 9", data["ls_corr"])):
+        if corr is None:
+            continue
+        print(f"\nWithin-site Spearman corr(cos SZA, t) [{label}], origin {T0.date()}:")
+        for _, r in corr.iterrows():
+            print(f"  {r['site']:<14} n={int(r['n']):>2}  rho={r['spearman_rho']:+.3f}  "
+                  f"p={r['p_value']:.3f}")
 
-    # 2. Per-site Spearman correlation between cos(SZA) and t.
-    corr = cos_sza_corr.site_cos_sza_time_corr(obs)
-    print(f"\nWithin-site Spearman corr(cos SZA, t), origin {T0.date()}:")
-    for _, r in corr.iterrows():
-        print(f"  {r['site']:<14} n={int(r['n']):>2}  rho={r['spearman_rho']:+.3f}  "
-              f"p={r['p_value']:.3f}")
-
-    # 3. Write the results table (with a provenance sidecar).
+    # 2. Write the per-sensor results tables (with provenance sidecars).
     out_dir = paths.DATA / "cos_sza_corr"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_csv = out_dir / "cos_sza_time_corr.csv"
-    corr.to_csv(out_csv, index=False)
-    provenance.write_sidecar(out_csv, cfg.as_dict())
-    print(f"\nResults CSV -> {out_csv}")
+    emit_csv = out_dir / "cos_sza_time_corr.csv"
+    data["emit_corr"].to_csv(emit_csv, index=False)
+    provenance.write_sidecar(emit_csv, cfg.as_dict())
+    print(f"\nEMIT results CSV -> {emit_csv}")
+    if data["ls_corr"] is not None:
+        ls_csv = out_dir / "cos_sza_time_corr_landsat.csv"
+        data["ls_corr"].to_csv(ls_csv, index=False)
+        provenance.write_sidecar(ls_csv, cfg.as_dict())
+        print(f"Landsat results CSV -> {ls_csv}")
 
-    # 4. Publication figure (manuscript theme -> figures/publication/manuscript/).
+    # 3. Publication figure (manuscript theme -> figures/publication/manuscript/).
     with style.theme("manuscript"):
-        fig = figures.cos_sza_time_corr(obs, corr, T0=T0)
+        fig = figures.cos_sza_time_corr(
+            data["emit_obs"], data["emit_corr"],
+            ls_obs=data["ls_obs"], ls_corr=data["ls_corr"],
+            order=data["order"], T0=T0)
         written = style.save(fig, FIG_NAME)
     for p in written:
         print(f"Figure -> {p}")

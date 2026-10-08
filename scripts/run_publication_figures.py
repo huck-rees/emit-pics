@@ -176,25 +176,18 @@ def _load_brdf_site_spectra(cfg):
 
 
 def _load_cos_sza_corr(cfg):
-    """Per-scene cos(theta)/t and per-site Spearman corr for the cos-SZA-vs-time figure.
+    """Two-sensor cos(theta)/t designs + per-site Spearman corr for figureB1.
 
-    Assembles the same pooled design table the BRDF drift fit uses
-    (:func:`emit_pics.brdf_drift.assemble_design`), then computes the within-site
-    Spearman correlation between ``cos(SZA)`` and ``t`` via
-    :func:`emit_pics.cos_sza_corr.site_cos_sza_time_corr`.
+    Builds the Landsat 9 (all PICS) and EMIT (invariant PICS only) per-scene
+    designs on one shared time origin via
+    :func:`emit_pics.cos_sza_corr.dual_sensor_design`.
     """
-    from emit_pics import brdf_drift, cos_sza_corr
-    roster, _, _ = brdf_drift.resolve_roster(cfg)
-    if not roster:
-        return None, "no BRDF roster (brdf.site_patches empty)."
-    obs, _, T0, notes = brdf_drift.assemble_design(roster, cfg)
-    if obs is None or obs.empty:
-        why = "; ".join(f"{n['site']}: {n['note']}" for n in notes if not n["kept"])
-        return None, f"no usable PICS ({why})."
-    # Only the PICS used in the BRDF drift fit (non-invariant sites excluded).
-    obs, _ = brdf_drift.apply_drift_exclusion(obs, cfg)
-    corr = cos_sza_corr.site_cos_sza_time_corr(obs)
-    return {"obs": obs, "corr": corr, "T0": T0}, f"{len(corr)} PICS cos-SZA/time corr"
+    from emit_pics import cos_sza_corr
+    data = cos_sza_corr.dual_sensor_design(cfg)
+    if data is None:
+        return None, "no usable BRDF design (roster empty or no EMIT scenes)."
+    n_ls = 0 if data["ls_corr"] is None else len(data["ls_corr"])
+    return data, f"LS9 {n_ls} PICS + EMIT {len(data['emit_corr'])} PICS cos-SZA/time"
 
 
 def _study_sites(cfg):
