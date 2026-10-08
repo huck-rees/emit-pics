@@ -191,6 +191,8 @@ def _load_cos_sza_corr(cfg):
     if obs is None or obs.empty:
         why = "; ".join(f"{n['site']}: {n['note']}" for n in notes if not n["kept"])
         return None, f"no usable PICS ({why})."
+    # Only the PICS used in the BRDF drift fit (non-invariant sites excluded).
+    obs, _ = brdf_drift.apply_drift_exclusion(obs, cfg)
     corr = cos_sza_corr.site_cos_sza_time_corr(obs)
     return {"obs": obs, "corr": corr, "T0": T0}, f"{len(corr)} PICS cos-SZA/time corr"
 
