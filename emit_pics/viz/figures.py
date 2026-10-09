@@ -568,6 +568,12 @@ def brdf_cos_sza(design, *, landsat_design=None, site="Libya_4", fig_width=6.5,
     if not pooled:
         design = design[design["site"].map(_norm_site) == _norm_site(site)]
         site_label = str(site).replace("_", " ")
+        # Site abbreviation (Libya_4 -> L4) for the cos(theta) axis subscript.
+        _p = str(site).replace(" ", "_").split("_")
+        _abbr = _p[0][0].upper() + (_p[-1] if _p[-1].isdigit() else "")
+        xlabel = rf"$\cos\theta_{{{_abbr}}}$"
+    else:
+        xlabel = r"$\cos\theta$"
     styles = style.site_styles(design["site"].unique()) if pooled else None
 
     # Panels left-to-right: optional Landsat TOA (a), then EMIT radiance, reflectance.
@@ -623,7 +629,7 @@ def brdf_cos_sza(design, *, landsat_design=None, site="Libya_4", fig_width=6.5,
                 fontsize=7 * sc, family="monospace", zorder=6,
                 bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.9))
 
-        ax.set_xlabel("cos(SZA)")
+        ax.set_xlabel(xlabel)
         ax.set_ylabel(ylab)
 
     if pooled:
