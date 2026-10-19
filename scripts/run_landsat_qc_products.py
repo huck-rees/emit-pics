@@ -26,7 +26,7 @@ cfg_run = load_config()
 SITE = cfg_run.site
 PATCH = cfg_run.patch
 MAKE_PDF = True
-EXTERNAL_CUBE_DIR = r"D:\JPL\emit-pics\data\landsat\cubes"   # None = repo-relative
+EXTERNAL_CUBE_DIR = None   # None = repo-relative; set an absolute path to read cubes from an external drive
 
 
 def main():

@@ -126,7 +126,7 @@ def main() -> None:
     produced, low_cov, missing, errored, skipped = [], [], [], [], []
     geom_records = []
     for k, item in enumerate(scenes, 1):
-        ts = _ts = pd.to_datetime(item.properties["datetime"]).strftime("%Y%m%dT%H%M%S")
+        ts = pd.to_datetime(item.properties["datetime"]).strftime("%Y%m%dT%H%M%S")
         if RESUME and _already_done(ts):
             skipped.append(ts)
             continue

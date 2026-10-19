@@ -93,7 +93,7 @@ def with_retry(open_fn, n_retries: int = 3, backoff: int = 5, label: str = ""):
     retried *n_retries* times with increasing sleeps (``backoff*1``,
     ``backoff*2``, ...) before the error is propagated.
     """
-    for attempt in range(n_retries):
+    for attempt in range(max(1, n_retries)):
         try:
             return open_fn()
         except Exception as ex:
@@ -126,55 +126,6 @@ def find_asset_url(granule, token: str) -> str:
             f"granule links: {links}"
         )
     return hit[0]
-
-
-def open_l2a(granule, want_agg: bool) -> dict:
-    """Open the L2A reflectance file (and, if requested, the MASK file) once.
-
-    Reflectance, wavelengths and lon/lat are read from the single reflectance
-    handle; the Aggregate-Flag band is read from the MASK file when *want_agg*.
-
-    Parameters
-    ----------
-    granule : earthaccess result object
-        The L2A_RFL granule.
-    want_agg : bool
-        Whether to also open the MASK file and expose the Aggregate-Flag band.
-
-    Returns
-    -------
-    dict
-        ``refl`` (lazy DataArray, bands last), ``wl`` (1-D wavelengths),
-        ``lon``/``lat`` (2-D), ``agg`` (lazy 2-D Aggregate-Flag DataArray or
-        ``None``), and ``_handles`` (objects to close).
-    """
-    rfl_url = find_asset_url(granule, RFL_TOKEN)
-    fh = earthaccess.open([rfl_url])[0]
-    ds_rfl = xr.open_dataset(fh, engine="h5netcdf")
-    ds_wl = xr.open_dataset(fh, engine="h5netcdf", group="sensor_band_parameters")
-    ds_loc = xr.open_dataset(fh, engine="h5netcdf", group="location")
-
-    out = {
-        "refl": ds_rfl["reflectance"],
-        "wl": np.asarray(ds_wl["wavelengths"].values),
-        "lon": np.asarray(ds_loc["lon"].values),
-        "lat": np.asarray(ds_loc["lat"].values),
-        "agg": None,
-        "_handles": [ds_rfl, ds_wl, ds_loc, fh],
-    }
-
-    if want_agg:
-        mask_url = find_asset_url(granule, MASK_TOKEN)
-        fh_m = earthaccess.open([mask_url])[0]
-        ds_m = xr.open_dataset(fh_m, engine="h5netcdf")
-        ds_mb = xr.open_dataset(
-            fh_m, engine="h5netcdf", group="sensor_band_parameters"
-        )
-        agg_i = band_index(ds_mb["mask_bands"].values, AGG_FLAG_LABEL)
-        out["agg"] = ds_m["mask"][..., agg_i]
-        out["_handles"] += [ds_m, ds_mb, fh_m]
-
-    return out
 
 
 def open_l1b(granule, want_loc: bool = False) -> dict:

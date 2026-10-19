@@ -97,7 +97,7 @@ class RunConfig:
     increment_km: int = 10
 
     def as_dict(self) -> dict:
-        """Flat dict of every field — used for provenance sidecars (change #3)."""
+        """Flat dict of every field — used for provenance sidecars."""
         return asdict(self)
 
 
