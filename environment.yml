@@ -22,10 +22,11 @@ dependencies:
   - boto3
   # --- OLI-2 RSR workbook reader (scripts/build_oli2_rsr_tidy.py) ---
   - openpyxl
+  # NASA Earthdata access. conda-forge (not pip) so its AWS/async stack
+  # (s3fs/aiobotocore/botocore) co-solves with boto3 instead of pip
+  # downgrading botocore out from under the conda boto3.
+  - earthaccess
   - pyyaml
   - jupyter
   - jupyterlab
   - pytest
-  - pip
-  - pip:
-    - earthaccess
