@@ -21,10 +21,7 @@ import pandas as pd
 
 from emit_pics import paths
 from emit_pics.qc_gate import QCReviewRequired, apply_qc_filter
-from emit_pics.brdf_drift import channel_matrix, channel_gamma
-
-#: Seconds per Julian year — the common-clock scale for ``t`` (years).
-_YR_SEC = 365.25 * 86400
+from emit_pics.brdf_drift import channel_matrix, channel_gamma, _stack_design
 
 #: Landsat product token (routes to paths.LS_TOA_DIR via paths._PRODUCT_DIR).
 PRODUCT = "toa"
@@ -100,27 +97,10 @@ def assemble_design_landsat(roster, cfg):
         no site was usable), ``wl_by_site``, ``T0`` (common time origin), and
         ``notes`` (one dict per roster site: site, patch, wl_used, note, kept).
     """
-    frames, wl_by_site, notes = [], {}, []
-    for pics_id, patch in roster.items():
-        df, wl_used, note = load_site_obs_landsat(
-            pics_id, patch, cfg.brdf_target_wl,
-            require_qc_review=cfg.require_qc_review)
-        kept = df is not None and not df.empty
-        notes.append({"site": pics_id, "patch": patch, "wl_used": wl_used,
-                      "note": note, "kept": kept})
-        if not kept:
-            continue
-        wl_by_site[pics_id] = wl_used
-        frames.append(df)
-
-    if not frames:
-        return None, wl_by_site, None, notes
-
-    obs = pd.concat(frames, ignore_index=True).sort_values("datetime").reset_index(drop=True)
-    T0 = obs["datetime"].min()
-    obs["t"] = (obs["datetime"] - T0).dt.total_seconds() / _YR_SEC
-    obs["g"] = np.cos(np.radians(obs["sza_mean"]))
-    return obs, wl_by_site, T0, notes
+    def load_one(pics_id, patch):
+        return load_site_obs_landsat(pics_id, patch, cfg.brdf_target_wl,
+                                     require_qc_review=cfg.require_qc_review)
+    return _stack_design(roster, load_one)
 
 
 def landsat_drift_spectrum(obs, *, n_boot=300, seed=0):

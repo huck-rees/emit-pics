@@ -27,73 +27,15 @@ from matplotlib.widgets import Button, RadioButtons
 
 from emit_pics import paths
 from emit_pics.config import canonical_token
-from emit_pics.qc_gate import QC_REASONS, QC_SHEET_COLS, build_qc_sheet
+from emit_pics.qc_gate import QC_REASONS, build_qc_sheet
 from emit_pics.landsat_cube_extract import read_cube_geotiff
 from emit_pics.landsat_qc_visuals import load_toa_spectra, render_scene_figure
-
-
-def _write_sheet(df: pd.DataFrame, qc_path) -> None:
-    """Persist the worksheet in the canonical column order (crash-safe write)."""
-    df[QC_SHEET_COLS].to_csv(qc_path, index=False)
-
-
-# ---------------------------------------------------------------------------
-# Cross-backend window placement (TkAgg / Qt). Best-effort: any backend whose
-# window API is unavailable silently no-ops. Kept self-contained here (rather than
-# imported from emit_pics.qc_review) so this module needs none of the EMIT
-# streaming stack (earthaccess) the Landsat env does not install.
-# ---------------------------------------------------------------------------
-def _screen_workarea(manager):
-    """Screen ``(width, height)`` in pixels for a figure's window, or ``None``."""
-    win = getattr(manager, "window", None)
-    if win is None:
-        return None
-    if hasattr(win, "winfo_screenwidth"):                    # TkAgg
-        try:
-            return int(win.winfo_screenwidth()), int(win.winfo_screenheight())
-        except Exception:
-            return None
-    try:                                                     # Qt (5/6)
-        screen = win.screen() if hasattr(win, "screen") else None
-        if screen is not None:
-            ag = screen.availableGeometry()
-            return int(ag.width()), int(ag.height())
-    except Exception:
-        pass
-    return None
-
-
-def _set_window_geometry(manager, x, y, w, h):
-    """Position+size a figure's top-level window (TkAgg / Qt); no-op otherwise."""
-    win = getattr(manager, "window", None)
-    if win is None:
-        return
-    x, y, w, h = int(x), int(y), int(w), int(h)
-    try:
-        if hasattr(win, "wm_geometry"):                      # TkAgg
-            win.wm_geometry(f"{w}x{h}+{x}+{y}")
-        elif hasattr(win, "setGeometry"):                    # Qt
-            win.setGeometry(x, y, w, h)
-        elif hasattr(win, "move") and hasattr(win, "resize"):
-            win.move(x, y)
-            win.resize(w, h)
-    except Exception:
-        pass
-
-
-def _move_window(manager, x, y):
-    """Move a figure's window without changing its size (TkAgg / Qt); no-op else."""
-    win = getattr(manager, "window", None)
-    if win is None:
-        return
-    x, y = int(x), int(y)
-    try:
-        if hasattr(win, "wm_geometry"):                      # TkAgg: "+x+y" moves only
-            win.wm_geometry(f"+{x}+{y}")
-        elif hasattr(win, "move"):                           # Qt
-            win.move(x, y)
-    except Exception:
-        pass
+from emit_pics.qc_review_ui import (
+    write_sheet as _write_sheet,
+    screen_workarea as _screen_workarea,
+    set_window_geometry as _set_window_geometry,
+    move_window as _move_window,
+)
 
 
 class LandsatQCReviewer:

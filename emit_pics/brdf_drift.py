@@ -432,26 +432,17 @@ def load_site_obs(pics_id, patch, target_wl, *, require_qc_review,
     return pd.DataFrame(recs), wl_used, f"{n_all} scenes -> {len(recs)} usable"
 
 
-def assemble_design(roster, cfg):
-    """Stack every site into the pooled design table with a common clock (§2).
+def _stack_design(roster, load_one):
+    """Stack per-site obs into the pooled design table with a common clock.
 
-    Sets ``t`` = years since the earliest scene across *all* sites (so ``gamma``
-    is one shared drift) and ``g = cos(SZA)``.
-
-    Returns
-    -------
-    (pandas.DataFrame | None, dict, Timestamp | None, list)
-        ``obs`` (pooled per-scene table, or None if no site was usable),
-        ``wl_by_site`` (``{pics_id: wl_used}``), ``T0`` (common time origin), and
-        ``notes`` (one dict per roster site: site, patch, wl_used, note, kept).
+    ``load_one(pics_id, patch)`` returns ``(df, wl_used, note)`` for one site —
+    the sensor-specific loader is the only thing that differs between the EMIT and
+    Landsat assemblies. Sets ``t`` = years since the earliest scene across *all*
+    sites (so ``gamma`` is one shared drift) and ``g = cos(SZA)``.
     """
     frames, wl_by_site, notes = [], {}, []
     for pics_id, patch in roster.items():
-        df, wl_used, note = load_site_obs(
-            pics_id, patch, cfg.brdf_target_wl,
-            require_qc_review=cfg.require_qc_review,
-            earth_sun_normalize=cfg.earth_sun_normalize,
-            e0_method=cfg.e0_method)
+        df, wl_used, note = load_one(pics_id, patch)
         kept = df is not None and not df.empty
         notes.append({"site": pics_id, "patch": patch, "wl_used": wl_used,
                       "note": note, "kept": kept})
@@ -468,6 +459,27 @@ def assemble_design(roster, cfg):
     obs["t"] = (obs["datetime"] - T0).dt.total_seconds() / _YR_SEC
     obs["g"] = np.cos(np.radians(obs["sza_mean"]))
     return obs, wl_by_site, T0, notes
+
+
+def assemble_design(roster, cfg):
+    """Stack every EMIT site into the pooled design table with a common clock (§2).
+
+    Thin wrapper over :func:`_stack_design` with the EMIT per-site loader.
+
+    Returns
+    -------
+    (pandas.DataFrame | None, dict, Timestamp | None, list)
+        ``obs`` (pooled per-scene table, or None if no site was usable),
+        ``wl_by_site`` (``{pics_id: wl_used}``), ``T0`` (common time origin), and
+        ``notes`` (one dict per roster site: site, patch, wl_used, note, kept).
+    """
+    def load_one(pics_id, patch):
+        return load_site_obs(
+            pics_id, patch, cfg.brdf_target_wl,
+            require_qc_review=cfg.require_qc_review,
+            earth_sun_normalize=cfg.earth_sun_normalize,
+            e0_method=cfg.e0_method)
+    return _stack_design(roster, load_one)
 
 
 def leverage_summary(obs):
