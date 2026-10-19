@@ -12,7 +12,7 @@ sensor-agnostic BRDF fit (:mod:`emit_pics.brdf_drift`) consumes them unchanged:
 * one per-scene **per-band table** (``central_wl``, ``median_toa``, ``mean_toa``,
   ...) with a fixed 7-row band grid, matching the ``perchannel`` schema.
 
-Design choices (locked with D. Thompson, 2026-09):
+Design choices:
 
 * **TOA reflectance only** — Landsat's surface-reflectance retrieval (LaSRC)
   differs too much from EMIT's to be a fair instrument comparison. TOA is computed

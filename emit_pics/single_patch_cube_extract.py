@@ -8,10 +8,7 @@ derivations and persistence defined here but inverts the loop nesting (open each
 granule once, build its geolocation index once, then extract every covered
 patch).
 
-This module consolidates the streaming/masking layer that used to be duplicated
-across :mod:`emit_pics.id_matched_pairs` (geometry), :mod:`emit_pics.extract_patch_stats`
-(per-channel radiance/reflectance) and :mod:`emit_pics.display_qc_visuals` (QC
-rendering).  For one acquisition it:
+For one acquisition it:
 
 1. opens each EMIT asset **once** (L2A reflectance + MASK, L1B radiance, L1B OBS),
 2. builds the in-patch pixel mask **once** from the shared geolocation grid,
@@ -34,11 +31,6 @@ Design rules (consistent with the rest of the package):
   pixels only, not the rectangular bounding window.  Per-pixel ``row``/``col``
   (full-scene downtrack/crosstrack indices) are stored too, so a 2-D image can be
   reconstructed later (e.g. for QC rendering from cache).
-
-Low-level helpers proven elsewhere are reused rather than duplicated; only the
-two granule openers that previously lived in the matplotlib-importing
-:mod:`emit_pics.display_qc_visuals` are re-stated here so this module stays free
-of any plotting dependency.
 """
 
 from pathlib import Path

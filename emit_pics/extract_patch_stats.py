@@ -7,10 +7,6 @@ summarizes the in-patch pixels of each product, channel by channel.  It is
 Pure function library — no top-level execution, no hardcoded parameters,
 no ``__main__`` block, and zero side effects on import.  ``earthaccess.login``
 is *not* called here; the caller authenticates before streaming.
-
-Low-level geometry/IO helpers proven in :mod:`emit_pics.id_matched_pairs`
-(timestamp parsing, band-by-label lookup, the KDTree patch mask, granule
-lookup) are reused rather than duplicated.
 """
 
 import os
