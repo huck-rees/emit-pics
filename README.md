@@ -37,23 +37,22 @@ You also need NASA Earthdata credentials. The streaming steps authenticate via `
 
 The Landsat 9 control branch additionally reads Collection 2 Level-1 TOA assets from the **requester-pays** `usgs-landsat` S3 bucket (`us-west-2`), so it needs AWS credentials in the default boto3 chain — `~/.aws/credentials`, or the `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` environment variables (you are billed egress for these reads). The requester-pays and GDAL `/vsis3/` flags are set automatically by `scripts/run_landsat_cube_extract.py`; the LandsatLook STAC catalog itself needs no credentials.
 
-Then edit **`run_config.yaml`** (at minimum `site`, `patch`, `patch_size`) and run the pipeline:
+Then edit **`run_config.yaml`** (at minimum `site`, `patch`, `patch_size`) and run the pipeline stage by stage:
 
 ```bash
 python scripts/run_pipeline.py setup      # tile patches + find granule coverage (Earthdata)
 python scripts/run_pipeline.py extract    # stream pixels + build QC products (Earthdata)
 #   → inspect the QC products and mark each worksheet reviewed (see "QC gate" below)
 python scripts/run_pipeline.py analyze    # matched pairs → per-wavelength deltas → aggregate
-python scripts/run_pipeline.py drift      # cross-PICS per-channel drift fit + figures
-```
-
-An independent second drift estimate — the pooled multi-site **BRDF** branch (see below) — runs off the same extracted data once its roster is configured:
-
-```bash
+python scripts/run_pipeline.py drift      # cross-PICS matched-pairs drift fit + figures
 python scripts/run_pipeline.py brdf       # pooled quasi-BRDF drift: assemble → single-channel → spectrum
+python scripts/run_pipeline.py landsat    # OLI-2 control: extract → QC → drift → robustness (AWS)
+python scripts/run_pipeline.py compare    # EMIT vs OLI-2 at the seven OLI-2 bands
+python scripts/run_pipeline.py figures    # publication figures + Table 1
+python scripts/run_pipeline.py appendix   # cos(SZA)–time check + leave-one/two-out
 ```
 
-Add `--dry-run` to any stage to print the exact steps it would run without executing them.
+`python scripts/run_pipeline.py all` runs every stage in order (it stops at the manual QC gate until the worksheets are marked reviewed). Add `--dry-run` to any stage to print the exact steps without executing them.
 
 ## Configuration — `run_config.yaml`
 
@@ -72,25 +71,32 @@ Add `--dry-run` to any stage to print the exact steps it would run without execu
 | `extract` | `cache_pixels`, `want_obs`, `filter_agg_flag`, `min_valid_frac` | Cache the raw pixel cube; stream OBS geometry; Aggregate-Flag screening + its threshold. |
 | `granule_search` | `date_start`, `date_end`, `patch_size_km` | Earthdata search window and patch size (step 2). |
 | `patch_gen` | `min_patch_km`, `increment_km` | Nested-patch tiling parameters (step 1). |
+| `landsat` | `stac_url`, `collection`, `platform`, `max_cloud`, `min_coverage` | Landsat 9 OLI-2 STAC search for the control branch (LandsatLook catalog, collection, platform, and the cloud / in-patch-coverage thresholds). |
 
 A few **execution-only toggles** stay in the relevant script's header (they change *how* a step runs, not *what* is analysed): `RESUME` (batched extractor), `PREFER_CUBE` / `DRAW_NADIR` / `MAKE_PDF` (QC products), and `ONLY_BANDS` (drift figures).
 
 ## The orchestrator — `run_pipeline.py`
 
-`python scripts/run_pipeline.py <stage> [--mode single|allpatches] [--dry-run]`
+`python scripts/run_pipeline.py <stage|all> [--dry-run]`
+
+Every stage operates on all patches of `patch_size` (the batched runners) and on the `run_config.yaml` rosters (BRDF / Landsat).
 
 | Stage | Runs | Notes |
 | --- | --- | --- |
 | `setup` | `run_patch_generator` → `run_id_granules` | Once per site; uses Earthdata. |
 | `extract` | `cube_extract` → `qc_products` | Uses Earthdata; then **review QC**. |
-| `analyze` | `id_matched_pairs` → `delta_calculations` → `aggregate_pairs`\* | Local; QC-gated. |
-| `drift` | `matched_pairs_drift_analysis` | Local; cross-PICS. |
-| `brdf` | `brdf_assemble` → `brdf_single_channel` → `brdf_drift_spectrum` | Local; pooled multi-site; **ignores `--mode`**. |
-| `all` | `setup` → `extract`, then stops for QC review | — |
+| `analyze` | `id_matched_pairs` → `delta_calculations` → `aggregate_pairs` | Local; QC-gated. |
+| `drift` | `matched_pairs_drift_analysis` | Local; cross-PICS matched-pairs drift. |
+| `brdf` | `brdf_assemble` → `brdf_single_channel` → `brdf_drift_spectrum` | Local; pooled multi-site. |
+| `landsat` | `cube_extract` → `qc_products` → `brdf_drift_spectrum` → `robustness` | OLI-2 control; AWS; then **review the Landsat QC**. |
+| `compare` | `emit_oli2_band_comparison` | EMIT vs OLI-2 at the seven bands. |
+| `figures` | `publication_figures` → `data_volume_table` | Main figures + Table 1. |
+| `appendix` | `cos_sza_corr` → `brdf_loo` | cos(SZA)–time check; leave-one/two-out (Appendix B/C). |
+| `all` | every stage above, in order | Stops at the manual QC gate until the worksheets are reviewed. |
 
-\* `aggregate_pairs` runs in `allpatches` mode only. **`--mode allpatches`** (default) operates on every patch of `patch_size`; **`--mode single`** operates on just `patch`. The `brdf` stage is always pooled across its roster, so both modes run the same three scripts. Each step is an isolated subprocess that reads `run_config.yaml` itself, so a failure stops the pipeline with that step's own message. In `single` mode `analyze` refuses to run until the patch's QC worksheet is reviewed.
+Each step is an isolated subprocess that reads `run_config.yaml` itself, so a failure stops the pipeline with that step's own message. The patch-size sensitivity (Appendix A) needs a separate 20 km run — set 20 km patches + `brdf.label: 20km`, re-run `extract` → `brdf`, then `run_patch_size_sensitivity.py` — so it is not part of `appendix`.
 
-You can always run the underlying scripts directly (e.g. `python scripts/run_delta_calculations.py`) for granular control — the orchestrator just calls them in order.
+The per-patch `run_single_patch_*.py` scripts remain for one-off single-patch inspection but are not driven by the orchestrator. You can also run any underlying script directly for granular control.
 
 ## Package modules
 

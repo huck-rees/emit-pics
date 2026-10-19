@@ -48,12 +48,7 @@ os.environ.setdefault("AWS_REQUEST_PAYER", "requester")
 os.environ.setdefault("AWS_REGION", "us-west-2")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-west-2")
 
-# --- script-local STAC/search knobs ---
-STAC_URL = "https://landsatlook.usgs.gov/stac-server"
-COLLECTION = "landsat-c2l1"
-PLATFORM = "landsat-9"
-MAX_CLOUD = 5.0
-MIN_COVERAGE = 0.99                                   # skip scenes with fill/gaps in-patch
+# --- script-local execution toggle (STAC/search knobs live in run_config.yaml) ---
 RESUME = True                                         # skip scenes already written to disk
 
 # Pixel-cube cache (QC only). Off by default; when ON the cubes are large, so they
@@ -65,6 +60,13 @@ EXTERNAL_CUBE_DIR = None                              # e.g. r"D:\JPL\emit-pics\
 cfg = load_config()
 PICS_ID = canonical_token(cfg.site)
 PATCH_ID = cfg.patch
+
+# STAC / search knobs — from the run_config.yaml `landsat:` block.
+STAC_URL = cfg.ls_stac_url
+COLLECTION = cfg.ls_collection
+PLATFORM = cfg.ls_platform
+MAX_CLOUD = cfg.ls_max_cloud
+MIN_COVERAGE = cfg.ls_min_coverage
 
 if EXTERNAL_CUBE_DIR:
     paths.set_ls_cube_dir(EXTERNAL_CUBE_DIR)          # redirect ONLY the cubes off-drive

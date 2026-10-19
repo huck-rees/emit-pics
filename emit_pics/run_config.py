@@ -95,6 +95,12 @@ class RunConfig:
     # --- patch generation (upstream) ---
     min_patch_km: int = 10
     increment_km: int = 10
+    # --- Landsat 9 OLI-2 control (STAC search knobs) ---
+    ls_stac_url: str = "https://landsatlook.usgs.gov/stac-server"
+    ls_collection: str = "landsat-c2l1"
+    ls_platform: str = "landsat-9"
+    ls_max_cloud: float = 5.0
+    ls_min_coverage: float = 0.99
 
     def as_dict(self) -> dict:
         """Flat dict of every field — used for provenance sidecars."""
@@ -132,7 +138,7 @@ def load_config(path=None) -> RunConfig:
     products, matching = sec("products"), sec("matching")
     qc, spectra, drift = sec("qc"), sec("spectra"), sec("drift")
     extract, gs, pg = sec("extract"), sec("granule_search"), sec("patch_gen")
-    brdf, radiometry = sec("brdf"), sec("radiometry")
+    brdf, radiometry, landsat = sec("brdf"), sec("radiometry"), sec("landsat")
 
     # BRDF roster: keep only sites with a patch id set (drop null/blank entries).
     brdf_site_patches = {str(s): str(p) for s, p in (brdf.get("site_patches") or {}).items()
@@ -186,4 +192,9 @@ def load_config(path=None) -> RunConfig:
         search_patch_size_km=int(gs.get("patch_size_km", 10)),
         min_patch_km=int(pg.get("min_patch_km", 10)),
         increment_km=int(pg.get("increment_km", 10)),
+        ls_stac_url=str(landsat.get("stac_url", "https://landsatlook.usgs.gov/stac-server")),
+        ls_collection=str(landsat.get("collection", "landsat-c2l1")),
+        ls_platform=str(landsat.get("platform", "landsat-9")),
+        ls_max_cloud=float(landsat.get("max_cloud", 5.0)),
+        ls_min_coverage=float(landsat.get("min_coverage", 0.99)),
     )

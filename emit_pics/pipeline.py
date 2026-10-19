@@ -1,14 +1,15 @@
-"""Ordered pipeline steps + stage/mode resolution for the CLI runner.
+"""Ordered pipeline steps + stage resolution for the CLI runner.
 
-The thin CLI in ``scripts/run_pipeline.py`` uses this to run the existing
-per-step scripts in the correct order for the current ``run_config.yaml``. Each
-step is a ``(single_patch_script, allpatches_script)`` pair; a ``None`` slot
-means the step does not apply in that mode (e.g. the per-PICS aggregation is
-allpatches-only). Steps run as subprocesses, so each is isolated and reads
+The thin CLI in ``scripts/run_pipeline.py`` uses this to run the per-step
+scripts in the correct order for the current ``run_config.yaml``. Every stage
+operates on all patches of ``cfg.patch_size`` (the batched runners) and on the
+run_config rosters (BRDF / Landsat). The per-patch ``run_single_patch_*``
+scripts remain available for one-off inspection but are not driven by the
+orchestrator. Steps run as subprocesses, so each is isolated and reads
 ``run_config.yaml`` itself — no arguments are threaded through.
 
-``scripts_for`` (the stage/mode -> script-list resolution) is pure and unit
-tested; ``run_script`` / ``run_stage`` do the subprocess execution.
+``scripts_for`` (stage -> script list) is pure and unit tested; ``run_script`` /
+``run_stage`` do the subprocess execution.
 """
 
 import subprocess
@@ -18,49 +19,37 @@ from emit_pics.paths import REPO_ROOT
 
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 
-MODES = ("single", "allpatches")
-STAGE_ORDER = ("setup", "extract", "analyze", "drift", "brdf")
+STAGE_ORDER = ("setup", "extract", "analyze", "drift", "brdf",
+               "landsat", "compare", "figures", "appendix")
 
-#: stage -> ordered list of ``(single_patch_script, allpatches_script)``.
+#: stage -> ordered list of runner scripts (all batched / roster-driven).
 STEPS = {
-    "setup": [
-        ("run_patch_generator.py", "run_patch_generator.py"),
-        ("run_id_granules.py", "run_id_granules.py"),
-    ],
-    "extract": [
-        ("run_single_patch_cube_extract.py", "run_PICS_allpatches_cube_extract.py"),
-        ("run_single_patch_qc_products.py", "run_PICS_allpatches_qc_products.py"),
-    ],
-    "analyze": [
-        ("run_id_matched_pairs.py", "run_PICS_allpatches_id_matched_pairs.py"),
-        ("run_delta_calculations.py", "run_PICS_allpatches_delta_calculations.py"),
-        (None, "run_PICS_allpatches_aggregate_pairs.py"),   # per-PICS: allpatches only
-    ],
-    "drift": [
-        ("run_matched_pairs_drift_analysis.py", "run_matched_pairs_drift_analysis.py"),
-    ],
-    # BRDF pooled multi-site drift: always pooled, so it ignores the single/
-    # allpatches fork — the same three scripts fill both slots. Its roster comes
-    # from the run_config.yaml `brdf:` block, not cfg.patch / cfg.patch_size.
-    "brdf": [
-        ("run_brdf_assemble.py", "run_brdf_assemble.py"),
-        ("run_brdf_single_channel.py", "run_brdf_single_channel.py"),
-        ("run_brdf_drift_spectrum.py", "run_brdf_drift_spectrum.py"),
-    ],
+    "setup": ["run_patch_generator.py", "run_id_granules.py"],
+    "extract": ["run_PICS_allpatches_cube_extract.py",
+                "run_PICS_allpatches_qc_products.py"],
+    "analyze": ["run_PICS_allpatches_id_matched_pairs.py",
+                "run_PICS_allpatches_delta_calculations.py",
+                "run_PICS_allpatches_aggregate_pairs.py"],
+    "drift": ["run_matched_pairs_drift_analysis.py"],
+    "brdf": ["run_brdf_assemble.py", "run_brdf_single_channel.py",
+             "run_brdf_drift_spectrum.py"],
+    "landsat": ["run_landsat_cube_extract.py", "run_landsat_qc_products.py",
+                "run_landsat_brdf_drift_spectrum.py",
+                "run_landsat_brdf_robustness.py"],
+    "compare": ["run_emit_oli2_band_comparison.py"],
+    "figures": ["run_publication_figures.py", "run_data_volume_table.py"],
+    "appendix": ["run_cos_sza_corr.py", "run_brdf_loo.py"],
 }
 
 
-def scripts_for(stage: str, mode: str) -> list:
-    """Ordered script filenames to run for *stage* in *mode* (pure).
+def scripts_for(stage: str) -> list:
+    """Ordered script filenames to run for *stage* (pure).
 
-    Raises ``ValueError`` for an unknown stage or mode.
+    Raises ``ValueError`` for an unknown stage.
     """
     if stage not in STEPS:
         raise ValueError(f"Unknown stage '{stage}'. Choose from {list(STEPS)}.")
-    if mode not in MODES:
-        raise ValueError(f"Unknown mode '{mode}'. Choose from {list(MODES)}.")
-    col = 0 if mode == "single" else 1
-    return [pair[col] for pair in STEPS[stage] if pair[col] is not None]
+    return list(STEPS[stage])
 
 
 def run_script(name: str, *, python: str | None = None) -> int:
@@ -71,12 +60,12 @@ def run_script(name: str, *, python: str | None = None) -> int:
     return subprocess.run([python or sys.executable, str(path)]).returncode
 
 
-def run_stage(stage: str, mode: str, *, python: str | None = None):
+def run_stage(stage: str, *, python: str | None = None):
     """Run every script of *stage* in order; stop at the first non-zero exit.
 
     Returns ``(returncode, failed_script)`` — ``(0, None)`` on full success.
     """
-    for name in scripts_for(stage, mode):
+    for name in scripts_for(stage):
         rc = run_script(name, python=python)
         if rc != 0:
             return rc, name
