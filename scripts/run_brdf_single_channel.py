@@ -6,16 +6,16 @@ Second stage of the BRDF workflow (port of
 pooled design table from ``run_brdf_assemble.py`` and, at the single channel
 nearest ``brdf.target_wl``:
 
-* **§4b — shared-drift consistency check.** Fit each site's standalone gamma with
+* **shared-drift consistency check.** Fit each site's standalone gamma with
   a bootstrap CI, then test whether all sites' CIs overlap (one common drift).
   The verdict is computed and **warned loudly if not ``pass``**, but the run
   proceeds (a ``fail`` means the pooled gamma blends differing drifts — a red
   flag; ``marginal`` means caution). The verdict is recorded in the per-site
   table's provenance sidecar.
-* **§5 — joint pooled fit.** One nonlinear fit of the ``2S+1`` vector: per-site
+* **joint pooled fit.** One nonlinear fit of the ``2S+1`` vector: per-site
   ``alpha``/``beta`` with a single shared ``gamma``.
-* **§7 — bootstrap the shared gamma** by stratified within-site resampling.
-* **§6 — quasi-BRDF correction** figure: divide each scene by its own
+* **bootstrap the shared gamma** by stratified within-site resampling.
+* **quasi-BRDF correction** figure: divide each scene by its own
   ``(alpha_s + beta_s cos theta)`` so all sites collapse onto ``1 + gamma t``.
 
 Pure **local** post-processor. Requires ``data/brdf/brdf_design.csv`` (run
@@ -23,15 +23,15 @@ Pure **local** post-processor. Requires ``data/brdf/brdf_design.csv`` (run
 
 Outputs (``{wl}`` = target wavelength, rounded)
 -----------------------------------------------
-* ``data/brdf/brdf_persite_gamma_{wl}nm.csv`` — §4b per-site standalone gammas + CIs.
-* ``data/brdf/brdf_joint_fit_{wl}nm.csv`` — §5 per-site alpha/beta + shared gamma.
-* ``data/brdf/brdf_bootstrap_gamma_{wl}nm.csv`` — §7 pooled gamma, SE, 95% CI.
-* ``figures/brdf/brdf_persite_gamma_{wl}nm.png`` — §4b forest plot.
-* ``figures/brdf/brdf_persite_gamma_spectrum.{pdf,svg}`` — §4b per-site standalone
+* ``data/brdf/brdf_persite_gamma_{wl}nm.csv`` — per-site standalone gammas + CIs.
+* ``data/brdf/brdf_joint_fit_{wl}nm.csv`` — per-site alpha/beta + shared gamma.
+* ``data/brdf/brdf_bootstrap_gamma_{wl}nm.csv`` — pooled gamma, SE, 95% CI.
+* ``figures/brdf/brdf_persite_gamma_{wl}nm.png`` — forest plot.
+* ``figures/brdf/brdf_persite_gamma_spectrum.{pdf,svg}`` — per-site standalone
   gamma(lambda) across all channels (one point series per PICS, best fit, no
   bootstrap), rendered to publication (manuscript) specs.
-* ``figures/brdf/brdf_corrected_{wl}nm.png`` — §6 corrected collapse.
-* ``figures/brdf/brdf_bootstrap_{wl}nm.png`` — §7 bootstrap histogram.
+* ``figures/brdf/brdf_corrected_{wl}nm.png`` — corrected collapse.
+* ``figures/brdf/brdf_bootstrap_{wl}nm.png`` — bootstrap histogram.
 
 Set the roster + knobs in run_config.yaml (``brdf:`` block), then run::
 
@@ -51,8 +51,8 @@ cfg = load_config()
 paths.set_variant(cfg.output_variant)   # nest derived outputs under an active radiometry variant
 paths.set_brdf_label(cfg.brdf_label)    # extra BRDF-only sub-namespace (e.g. patch-size sweep)
 TARGET_WL     = cfg.brdf_target_wl
-N_BOOTSTRAP   = cfg.brdf_n_bootstrap     # pooled shared-gamma resamples (§7)
-PER_SITE_BOOT = cfg.brdf_per_site_boot   # per-site standalone-gamma resamples (§4b)
+N_BOOTSTRAP   = cfg.brdf_n_bootstrap     # pooled shared-gamma resamples
+PER_SITE_BOOT = cfg.brdf_per_site_boot   # per-site standalone-gamma resamples
 GAMMA_CAP     = cfg.brdf_gamma_cap       # %/yr; degenerate per-site fits hidden from the spectrum
 
 #: Product -> plot colour (matches the notebook).
@@ -81,7 +81,7 @@ def _clean_verdict(v):
 
 
 def _report_consistency(v):
-    """Print the §4b verdict; warn loudly (banner) if it is not a clean pass."""
+    """Print the verdict; warn loudly (banner) if it is not a clean pass."""
     print("\nShared-drift consistency check (step 4b):")
     for prod, d in v["per_product"].items():
         if d["verdict"] == "n/a":
@@ -103,7 +103,7 @@ def _report_consistency(v):
 
 
 def _plot_persite(persite, sites):
-    """§4b forest plot: per-site standalone gamma with bootstrap CI, per product."""
+    """forest plot: per-site standalone gamma with bootstrap CI, per product."""
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.2))
     for ax, prod in zip(axes, PRODUCTS):
         d = persite[persite["product"] == prod].reset_index(drop=True)
@@ -123,7 +123,7 @@ def _plot_persite(persite, sites):
 
 
 def _plot_corrected(joint, obs, site_colors, T0):
-    """§6: divide out each site's (alpha + beta cos theta); collapse onto 1 + gamma t."""
+    """Divide out each site's (alpha + beta cos theta); collapse onto 1 + gamma t."""
     fig, axes = plt.subplots(1, 2, figsize=(13, 4.6), sharex=True)
     tg = np.linspace(float(obs["t"].min()), float(obs["t"].max()), 60)
     for ax, prod in zip(axes, PRODUCTS):
@@ -149,7 +149,7 @@ def _plot_corrected(joint, obs, site_colors, T0):
 
 
 def _plot_bootstrap(boots, joint):
-    """§7: bootstrap histogram of the pooled shared gamma, both products."""
+    """Bootstrap histogram of the pooled shared gamma, both products."""
     fig, ax = plt.subplots(figsize=(7.5, 3.4))
     for p, color in PRODUCTS.items():
         ax.hist(100 * boots[p]["draws"], bins=40, color=color, alpha=0.55, label=p)
@@ -185,7 +185,7 @@ def main() -> None:
     paths.BRDF_DIR.mkdir(parents=True, exist_ok=True)
     paths.BRDF_FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 1. §4b — per-site standalone gamma + bootstrap CI, then the consistency check.
+    # 1. per-site standalone gamma + bootstrap CI, then the consistency check.
     rows = []
     for prod in PRODUCTS:
         for s in sites:
@@ -209,7 +209,7 @@ def main() -> None:
     fig.savefig(paths.brdf_persite_gamma_fig(TARGET_WL), dpi=200, bbox_inches="tight")
     plt.close(fig)
 
-    # 1b. §4b spectral stress test — each PICS's standalone gamma across ALL channels.
+    # 1b. spectral stress test — each PICS's standalone gamma across ALL channels.
     ref = brdf_drift.scene_perchannel(obs.iloc[0]["site"], obs.iloc[0]["patch"],
                                       obs.iloc[0]["timestamp"], "rfl")
     if ref is None:
@@ -236,7 +236,7 @@ def main() -> None:
         for p in written:
             print(f"Per-site gamma spectrum -> {p}")
 
-    # 2. §5 — joint pooled fit (per-site alpha/beta, one shared gamma).
+    # 2. joint pooled fit (per-site alpha/beta, one shared gamma).
     joint = {p: brdf_drift.fit_joint(obs, p) for p in PRODUCTS}
     jrows = []
     print()
@@ -257,7 +257,7 @@ def main() -> None:
     fig.savefig(paths.brdf_corrected_fig(TARGET_WL), dpi=200, bbox_inches="tight")
     plt.close(fig)
 
-    # 3. §7 — bootstrap the pooled shared gamma (stratified within-site).
+    # 3. bootstrap the pooled shared gamma (stratified within-site).
     boots = {p: brdf_drift.bootstrap_joint_gamma(obs, p, N_BOOTSTRAP) for p in PRODUCTS}
     brows = []
     print(f"\n{'':<8}{'gamma %/yr':>12}{'boot SE':>10}{'95% CI (%/yr)':>24}"

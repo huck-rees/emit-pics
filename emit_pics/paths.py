@@ -290,22 +290,22 @@ def brdf_leverage() -> Path:
 
 
 def brdf_persite_gamma(wl) -> Path:
-    """Per-site standalone-gamma table for the shared-drift check (§4b)."""
+    """Per-site standalone-gamma table for the shared-drift check."""
     return BRDF_DIR / f"brdf_persite_gamma_{wl:.0f}nm.csv"
 
 
 def brdf_joint_fit(wl) -> Path:
-    """Joint pooled fit: per-site alpha/beta + the one shared gamma (§5)."""
+    """Joint pooled fit: per-site alpha/beta + the one shared gamma."""
     return BRDF_DIR / f"brdf_joint_fit_{wl:.0f}nm.csv"
 
 
 def brdf_bootstrap_gamma(wl) -> Path:
-    """Bootstrapped pooled shared-gamma with CI, per product (§7)."""
+    """Bootstrapped pooled shared-gamma with CI, per product."""
     return BRDF_DIR / f"brdf_bootstrap_gamma_{wl:.0f}nm.csv"
 
 
 def brdf_drift_spectrum() -> Path:
-    """Pooled shared-gamma per EMIT channel (``brdf_drift_spectrum.csv``, §8)."""
+    """Pooled shared-gamma per EMIT channel (``brdf_drift_spectrum.csv``)."""
     return BRDF_DIR / "brdf_drift_spectrum.csv"
 
 
@@ -332,27 +332,27 @@ def drift_spectrum_fig(size) -> Path:
 
 # --------------------------------------------------- BRDF pooled multi-site figures
 def brdf_leverage_fig(wl) -> Path:
-    """Pooled leverage / confounding scatter (§4a)."""
+    """Pooled leverage / confounding scatter."""
     return BRDF_FIG_DIR / f"brdf_leverage_scatter_{wl:.0f}nm.png"
 
 
 def brdf_persite_gamma_fig(wl) -> Path:
-    """Per-site standalone-gamma forest plot (shared-drift check, §4b)."""
+    """Per-site standalone-gamma forest plot (shared-drift check)."""
     return BRDF_FIG_DIR / f"brdf_persite_gamma_{wl:.0f}nm.png"
 
 
 def brdf_corrected_fig(wl) -> Path:
-    """Quasi-BRDF-corrected collapse onto the shared drift line (§6)."""
+    """Quasi-BRDF-corrected collapse onto the shared drift line."""
     return BRDF_FIG_DIR / f"brdf_corrected_{wl:.0f}nm.png"
 
 
 def brdf_bootstrap_fig(wl) -> Path:
-    """Pooled shared-gamma bootstrap histogram (§7)."""
+    """Pooled shared-gamma bootstrap histogram."""
     return BRDF_FIG_DIR / f"brdf_bootstrap_{wl:.0f}nm.png"
 
 
 def brdf_drift_spectrum_fig() -> Path:
-    """Pooled drift spectrum figure (§8)."""
+    """Pooled drift spectrum figure."""
     return BRDF_FIG_DIR / "brdf_drift_spectrum.png"
 
 

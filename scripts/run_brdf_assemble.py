@@ -13,7 +13,7 @@ one "site"). This script:
    scene across all sites) with ``g = cos(SZA)``,
 3. applies the ``brdf.min_scenes`` per-site floor (**warns** on drops; a site with
    too few scenes cannot constrain the shared drift beyond its own alpha/beta),
-4. renders the §4a leverage / confounding scatter and reports pooled
+4. renders the leverage / confounding scatter and reports pooled
    ``corr(cos SZA, t)``.
 
 Pure **local** post-processor (no Earthdata). Needs each roster patch's geometry
@@ -26,7 +26,7 @@ Outputs
 * ``data/brdf/brdf_leverage.csv`` — per-site leverage summary (``kept`` flags the
   gate survivors).
 * ``figures/brdf/brdf_leverage_scatter_{wl}nm.png`` — rho vs t and rho vs cos(SZA),
-  coloured by site (§4a).
+  coloured by site.
 
 Set the roster + knobs in run_config.yaml (``brdf:`` block), then run::
 
@@ -53,7 +53,7 @@ from matplotlib import cm
 
 
 def _plot_leverage(obs, sites, T0):
-    """§4a: rho vs t (left) and rho vs cos(SZA) (right), rad top / rfl bottom."""
+    """Rho vs t (left) and rho vs cos(SZA) (right), rad top / rfl bottom."""
     site_colors = {s: cm.tab10(i % 10) for i, s in enumerate(sites)}
     fig, axes = plt.subplots(2, 2, figsize=(13, 8))
     for i, prod in enumerate(("rad", "rfl")):
@@ -135,7 +135,7 @@ def main() -> None:
     provenance.write_sidecar(lev_path, cfg.as_dict())
     print(f"Leverage table  -> {lev_path}")
 
-    # 5. §4a leverage / confounding scatter.
+    # 5. leverage / confounding scatter.
     paths.BRDF_FIG_DIR.mkdir(parents=True, exist_ok=True)
     fig = _plot_leverage(obs, sites, T0)
     fig_path = paths.brdf_leverage_fig(TARGET_WL)

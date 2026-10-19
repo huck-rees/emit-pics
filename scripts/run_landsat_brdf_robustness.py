@@ -4,7 +4,7 @@
 Two checks, both mirroring the EMIT BRDF branch and reusing its (sensor-agnostic)
 estimators:
 
-1. **Per-site consistency (EMIT §4b analog).** At the target band (nearest
+1. **Per-site consistency (EMIT analog).** At the target band (nearest
    ``brdf.target_wl``), fit each PICS's *standalone* γ with a within-site bootstrap
    CI (:func:`emit_pics.brdf_drift.boot_site_gamma`) and test whether all five site
    CIs overlap (:func:`emit_pics.brdf_drift.consistency_check`) — i.e. is one shared

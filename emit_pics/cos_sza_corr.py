@@ -81,6 +81,7 @@ def dual_sensor_design(cfg):
     """
     from emit_pics import brdf_drift, landsat_brdf
     from emit_pics.config import canonical_token
+    from emit_pics.qc_gate import QCReviewRequired
 
     roster, _, _ = brdf_drift.resolve_roster(cfg)
     if not roster:
@@ -92,7 +93,8 @@ def dual_sensor_design(cfg):
 
     try:
         ls_obs, _, _, _ = landsat_brdf.assemble_design_landsat(roster, cfg)
-    except Exception:
+    except QCReviewRequired as exc:
+        print(f"  Landsat design unavailable ({exc}); plotting EMIT only.")
         ls_obs = None
 
     # Normalise both clocks to tz-naive UTC (Landsat is tz-aware, EMIT naive) so a

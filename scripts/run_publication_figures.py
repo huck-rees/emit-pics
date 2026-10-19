@@ -107,8 +107,7 @@ def _load_brdf_single_channel(cfg):
     """Fig. 4 inputs: the single-channel corrected collapse + pooled-γ bootstrap.
 
     Reads the pooled BRDF design table (``data/brdf/brdf_design.csv``) and, at the
-    channel nearest ``brdf.target_wl``, recomputes the §5 joint fit and the §7
-    stratified bootstrap for both products via :mod:`emit_pics.brdf_drift`. The
+    channel nearest ``brdf.target_wl``, recomputes the joint fit and the stratified bootstrap for both products via :mod:`emit_pics.brdf_drift`. The
     bootstrap *draws* are not persisted by the BRDF step (only their summary CSV),
     and the fits use fixed seeds, so recomputing here is both necessary and exactly
     reproduces the BRDF step — the same on-the-fly pattern the other builders use.

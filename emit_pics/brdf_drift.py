@@ -58,7 +58,7 @@ def _resid(x, S, sidx, g, t, rho):
     return (a + b * g) * (1 + ga * t) - rho
 
 
-# PER-SITE STANDALONE FIT (§4b — shared-drift consistency check)
+# PER-SITE STANDALONE FIT (shared-drift consistency check)
 def fit_site(g, t, rho):
     """Standalone 3-parameter fit ``[alpha, beta, gamma]`` for one site/channel.
 
@@ -96,7 +96,7 @@ def boot_site_gamma(g, t, rho, n_boot, seed=1):
 
 def persite_gamma_spectrum(obs, product, fit_bands, wlgrid, *,
                            earth_sun_normalize=True, e0_method="spencer"):
-    """Standalone per-site ``gamma(lambda)`` for one product — the §4b stress test, spectral.
+    """Standalone per-site ``gamma(lambda)`` for one product — the stress test, spectral.
 
     The spectral companion to :func:`boot_site_gamma`: at every fit channel, fit
     each PICS on its **own** 3-parameter model ``(alpha + beta cos theta)(1 + gamma
@@ -132,7 +132,7 @@ def persite_gamma_spectrum(obs, product, fit_bands, wlgrid, *,
 
 
 def consistency_check(persite, *, marginal_ratio=0.25):
-    """Do the per-site standalone ``gamma`` CIs support one shared drift? (§4b).
+    """Do the per-site standalone ``gamma`` CIs support one shared drift?
 
     The machine version of the eyeball forest-plot test: for each product, the
     sites share a common drift only if **all** their CIs overlap — i.e. the
@@ -143,7 +143,7 @@ def consistency_check(persite, *, marginal_ratio=0.25):
     ----------
     persite : pandas.DataFrame
         Columns ``product``, ``site``, ``gamma_pct_yr``, ``ci_lo``, ``ci_hi``
-        (the §4b table). Rows with non-finite CI bounds are ignored.
+        (the table). Rows with non-finite CI bounds are ignored.
     marginal_ratio : float
         Overlap width below this fraction of the median CI width is flagged
         ``"marginal"`` (a thin/edge-touching overlap) rather than ``"pass"``.
@@ -189,7 +189,7 @@ def consistency_check(persite, *, marginal_ratio=0.25):
     return {"overall": overall, "per_product": per_product}
 
 
-# JOINT POOLED FIT (§5 — per-site alpha/beta, one shared gamma)
+# JOINT POOLED FIT (per-site alpha/beta, one shared gamma)
 def _build(frame, product):
     """Extract ``(sites, sidx, g, t, rho)`` for *product* from a design frame."""
     sites = sorted(frame["site"].unique())
@@ -224,7 +224,7 @@ def fit_joint(frame, product):
             "g": g, "t": t, "rho": rho, "n": int(g.size)}
 
 
-# POOLED GAMMA BOOTSTRAP (§7 — stratified within-site)
+# POOLED GAMMA BOOTSTRAP (stratified within-site)
 def bootstrap_joint_gamma(frame, product, n_boot, seed=42):
     """Bootstrap the pooled shared ``gamma`` by stratified within-site resampling.
 
@@ -247,7 +247,7 @@ def bootstrap_joint_gamma(frame, product, n_boot, seed=42):
             "ci": np.percentile(draws, [2.5, 97.5]), "draws": draws}
 
 
-# PER-CHANNEL GAMMA (§8 — the gamma(lambda) drift spectrum)
+# PER-CHANNEL GAMMA (the gamma(lambda) drift spectrum)
 def _warm(S, sidx, g, t, rho):
     """Warm-start ``2S+1`` vector: per-site OLS alpha/beta (single-scene -> mean)."""
     a0, b0 = np.zeros(S), np.zeros(S)
@@ -293,7 +293,7 @@ def channel_gamma(rho, g_all, t_all, site_all, n_boot, rng):
 
 # ASSEMBLY / IO  (reuses the pipeline's geometry / QC / spectra loaders)
 def resolve_roster(cfg):
-    """Map the configured roster to valid, non-excluded PICS (§1).
+    """Map the configured roster to valid, non-excluded PICS.
 
     ``cfg.brdf_site_patches`` already dropped null-patch sites (see the config
     loader). Here we drop any site named in ``cfg.brdf_exclude_sites`` and any
@@ -360,7 +360,7 @@ def scene_perchannel(site, patch, ts, product, *, earth_sun_normalize=True,
 
 def load_site_obs(pics_id, patch, target_wl, *, require_qc_review,
                   earth_sun_normalize=True, e0_method="spencer"):
-    """Per-scene obs for one site: QC-surviving, ``has_rfl``, median rho at the band (§2).
+    """Per-scene obs for one site: QC-surviving, ``has_rfl``, median rho at the band.
 
     Mirrors the single-patch recipe: read the geometry table, apply the QC gate,
     keep only reflectance-bearing survivors, then take each scene's median rho at
@@ -450,7 +450,7 @@ def _stack_design(roster, load_one):
 
 
 def assemble_design(roster, cfg):
-    """Stack every EMIT site into the pooled design table with a common clock (§2).
+    """Stack every EMIT site into the pooled design table with a common clock.
 
     Thin wrapper over :func:`_stack_design` with the EMIT per-site loader.
 
@@ -471,7 +471,7 @@ def assemble_design(roster, cfg):
 
 
 def leverage_summary(obs):
-    """Per-site scene count, date/SZA/time spread, and geometry confounding (§3).
+    """Per-site scene count, date/SZA/time spread, and geometry confounding.
 
     ``corr_g_t`` = ``corr(cos SZA, t)`` per site; near ±1 means that site's own
     ``beta``/``gamma`` are geometry-confounded even if its scene count is fine.
@@ -491,7 +491,7 @@ def leverage_summary(obs):
 
 
 def apply_min_scenes_gate(obs, summary, min_scenes):
-    """Drop sites with fewer than *min_scenes* post-QC scenes (§3).
+    """Drop sites with fewer than *min_scenes* post-QC scenes.
 
     A site needs more scenes than its 2 local parameters to inform ``gamma`` at
     all. Returns ``(obs, summary, dropped_sites)`` with the small sites removed
@@ -505,7 +505,7 @@ def apply_min_scenes_gate(obs, summary, min_scenes):
 
 
 def water_vapor_mask(ref_rfl):
-    """Fixed water-vapor exclusion mask from one reflectance per-channel table (§8).
+    """Fixed water-vapor exclusion mask from one reflectance per-channel table.
 
     EMIT L2A reflectance is fill (-> NaN) in the deep H2O windows — a fixed
     instrument property — so a single reflectance-bearing scene defines the
@@ -525,7 +525,7 @@ def water_vapor_mask(ref_rfl):
 
 def channel_matrix(obs, product, nband, *, earth_sun_normalize=True,
                    e0_method="spencer"):
-    """Scenes x bands median-rho matrix for *product*, band-order aligned (§8).
+    """Scenes x bands median-rho matrix for *product*, band-order aligned.
 
     Row ``i`` is ``obs`` scene ``i``'s per-channel median; a scene whose CSV is
     missing or has a different band count is left as NaN (and drops out per
