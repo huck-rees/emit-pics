@@ -35,6 +35,11 @@ dependencies = [
     "contextily",
     "pyyaml",
     "earthaccess",
+    # Landsat 9 control branch + OLI-2 RSR workbook reader
+    "rasterio",
+    "pystac-client",
+    "boto3",
+    "openpyxl",
 ]
 
 [project.optional-dependencies]

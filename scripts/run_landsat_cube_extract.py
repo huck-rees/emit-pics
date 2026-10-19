@@ -13,15 +13,14 @@ EMIT side uses, so the sensor-agnostic BRDF fit consumes them unchanged:
 QC is NOT done here — it is a separate manual worksheet (opt-out keep/remove),
 exactly as on the EMIT side. This runner only writes the raw geometry + stats.
 
-Set the target (site/patch, date window) in run_config.yaml, then run in an env
-with pystac-client + rasterio + boto3 (the `ls9-draft` env), with AWS credentials
+Set the target (site/patch, date window) in run_config.yaml, then run in the
+`emit-pics` env (pystac-client + rasterio + boto3), with AWS credentials
 configured for the requester-pays reads::
 
     python scripts/run_landsat_cube_extract.py
 
-NOTE (sketch): the STAC/source knobs below are script-local for now; once this
-stabilizes they move into a run_config `landsat:` block (see the proposed snippet
-in the design notes).
+The STAC and search knobs below (catalog URL, collection, cloud/coverage
+thresholds) are script-local constants.
 """
 
 import os
@@ -49,8 +48,7 @@ os.environ.setdefault("AWS_REQUEST_PAYER", "requester")
 os.environ.setdefault("AWS_REGION", "us-west-2")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-west-2")
 
-# --- script-local source knobs (TODO: move to run_config `landsat:` block) ---
-SOURCE = "usgs_toa"                                   # "usgs_toa" (TOA) | "mpc_sr"
+# --- script-local STAC/search knobs ---
 STAC_URL = "https://landsatlook.usgs.gov/stac-server"
 COLLECTION = "landsat-c2l1"
 PLATFORM = "landsat-9"
@@ -89,7 +87,7 @@ def process_scene(item, patch_bounds, patch_crs):
     *status* is ``"produced"`` (TOA CSV written), ``"low_coverage"`` (skipped:
     fill/gaps inside the patch), or ``"missing"``.
     """
-    cube = extract_scene(item, patch_bounds, patch_crs, source=SOURCE)
+    cube = extract_scene(item, patch_bounds, patch_crs)
     if cube["n_pixels"] == 0:
         return "missing", None
     if cube["coverage"] < MIN_COVERAGE:

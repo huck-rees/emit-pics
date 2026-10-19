@@ -15,6 +15,13 @@ dependencies:
   - matplotlib
   - cartopy
   - contextily
+  # --- Landsat 9 control branch (formerly the separate `ls9-draft` env) ---
+  # conda-forge so they share the same GDAL/PROJ build as geopandas/cartopy/pyproj
+  - rasterio
+  - pystac-client
+  - boto3
+  # --- OLI-2 RSR workbook reader (scripts/build_oli2_rsr_tidy.py) ---
+  - openpyxl
   - pyyaml
   - jupyter
   - jupyterlab

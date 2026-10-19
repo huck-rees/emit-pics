@@ -33,7 +33,9 @@ conda activate emit-pics
 pip install -e . --no-deps          # make `emit_pics` importable (scripts rely on it)
 ```
 
-You also need NASA Earthdata credentials. The streaming steps authenticate via `earthaccess.login()`, which reads `~/.netrc` (or `_netrc` on Windows) and falls back to an interactive prompt — see the [earthaccess docs](https://earthaccess.readthedocs.io/). That is the only per-machine setup.
+You also need NASA Earthdata credentials. The streaming steps authenticate via `earthaccess.login()`, which reads `~/.netrc` (or `_netrc` on Windows) and falls back to an interactive prompt — see the [earthaccess docs](https://earthaccess.readthedocs.io/).
+
+The Landsat 9 control branch additionally reads Collection 2 Level-1 TOA assets from the **requester-pays** `usgs-landsat` S3 bucket (`us-west-2`), so it needs AWS credentials in the default boto3 chain — `~/.aws/credentials`, or the `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` environment variables (you are billed egress for these reads). The requester-pays and GDAL `/vsis3/` flags are set automatically by `scripts/run_landsat_cube_extract.py`; the LandsatLook STAC catalog itself needs no credentials.
 
 Then edit **`run_config.yaml`** (at minimum `site`, `patch`, `patch_size`) and run the pipeline:
 
@@ -113,6 +115,12 @@ You can always run the underlying scripts directly (e.g. `python scripts/run_del
 | `PICS_allpatches_aggregate_pairs` | **Option A** — collapse each acquisition pair's spatial-replicate patches to one median ΔR per channel, removing pseudo-replication before the fit. |
 | `matched_pairs_drift_analysis` / `matched_pairs_bootstrap` | Cross-PICS drift: per-channel Theil–Sen slope of ΔR vs Δt with a PICS-stratified matched-pairs bootstrap CI (shared plumbing + figure in the former, the estimator in the latter). |
 | `brdf_drift` | Pooled multi-site quasi-BRDF drift: per-site + joint `(α+β·cosθ)(1+γt)` fits, bootstraps, the shared-drift consistency check, and the design-table assembly. |
+| `brdf_loo` | Leave-one-out and leave-two-out refits of the pooled BRDF drift (Appendix B). |
+| `patch_size_sensitivity` | Compare the BRDF drift spectrum across patch sizes (Appendix A). |
+| `cos_sza_corr` | cos(SZA)-vs-time collinearity check (table + figure) for the BRDF design. |
+| `landsat_cube_extract` | Landsat 9 OLI-2 TOA extraction over a patch (STAC + windowed `rasterio` COG reads); the Landsat analog of the EMIT cube extract. |
+| `landsat_brdf` | Landsat design-table assembly + per-site / leave-one-out drift, reusing `brdf_drift`'s fit. |
+| `landsat_qc_report` / `landsat_qc_visuals` / `landsat_qc_review` | Landsat QC snapshot PDF, figure rendering, and the interactive keep/remove reviewer. |
 
 The function libraries are side-effect-free; each is driven by a thin runner in `scripts/`.
 
@@ -153,6 +161,23 @@ An **independent second drift estimate** that consumes the same extracted data (
 11. **`run_brdf_drift_spectrum.py`** — Repeat the pooled joint fit at **every** EMIT channel (water-vapor bands excluded), with a two-sided (uncorrected) bootstrap p per channel, plus an unstable-channel flag (`brdf.gamma_cap`). Writes `data/brdf/brdf_drift_spectrum.csv` (the multi-site analog of the matched-pairs drift spectrum) + the drift-spectrum figure.
 
 > **Trust the pooled γ only if the consistency check is clean.** A `fail` (per-site CIs disjoint) means the pooled value blends differing true drifts — a red flag, not a result; a `marginal` warrants caution. Mauritania 2 is excluded by default (too few QC-surviving scenes to constrain γ); the `min_scenes` floor enforces this generally.
+
+### Landsat 9 OLI-2 control (parallel branch)
+
+An independent **control** on the EMIT drift: the same sensor-agnostic quasi-BRDF fit applied to Landsat 9 OLI-2 top-of-atmosphere reflectance over the same PICS, used to (a) screen each candidate PICS for temporal invariance and (b) cross-check the EMIT drift at the seven OLI-2 reflective bands. OLI-2's onboard calibration makes a fitted drift attributable to the surface rather than the sensor. TOA reflectance only (no Earth–Sun normalization), the seven reflective bands, read as windowed COGs from the LandsatLook STAC (requester-pays AWS; see Quick start).
+
+Set the site/patch and date window in `run_config.yaml`, then:
+
+```bash
+python scripts/run_landsat_cube_extract.py          # STAC + windowed COG reads (AWS)
+python scripts/run_landsat_qc_products.py           # per-scene QC worksheet + PDF
+python scripts/run_landsat_qc_review.py             # manual keep/remove (opt-out gate)
+python scripts/run_landsat_brdf_drift_spectrum.py   # per-band OLI-2 drift
+python scripts/run_landsat_brdf_robustness.py       # per-site + leave-one-out invariance
+python scripts/run_emit_oli2_band_comparison.py     # EMIT vs OLI-2 at the seven bands
+```
+
+The OLI-2 relative spectral response used for the band comparison lives in `data/landsat/oli2_rsr/` (source workbook + README); `scripts/build_oli2_rsr_tidy.py` regenerates the tidy CSV from the USGS workbook (needs `openpyxl`).
 
 ## Provenance
 

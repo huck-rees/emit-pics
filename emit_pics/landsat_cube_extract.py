@@ -163,12 +163,8 @@ def _dedupe_overpass(items, patch_wgs84):
 # ============================================================
 # ACCESS HELPERS  (STAC asset -> windowed COG read)
 # ============================================================
-def resolve_href(asset, source):
-    """GDAL-openable href for a STAC asset. ``source`` in {"usgs_toa", "mpc_sr"}."""
-    if source == "mpc_sr":
-        import planetary_computer
-        return planetary_computer.sign(asset.href)
-    # USGS: prefer the requester-pays s3 alternate (read via GDAL /vsis3/).
+def resolve_href(asset):
+    """GDAL-openable href for a STAC asset (USGS requester-pays s3 preferred)."""
     alt = (asset.extra_fields or {}).get("alternate", {})
     if "s3" in alt and alt["s3"].get("href"):
         return alt["s3"]["href"]
@@ -195,13 +191,13 @@ def read_window(href, patch_bounds, patch_crs):
     return data, valid, win_transform, crs
 
 
-def read_mtl(item, source):
+def read_mtl(item):
     """Scene MTL (JSON) — REFLECTANCE_MULT/ADD_BAND_* + SUN_ELEVATION for TOA."""
     key = next((k for k in item.assets
                 if k.upper().endswith("MTL.JSON") or k.upper() == "MTL.JSON"), None)
     if key is None:
         key = next(k for k in item.assets if item.assets[k].href.upper().endswith("MTL.JSON"))
-    href = resolve_href(item.assets[key], source)
+    href = resolve_href(item.assets[key])
     if href.startswith("s3://"):
         import boto3
         u = urlparse(href)
@@ -231,8 +227,7 @@ def to_toa_reflectance(dn, band_n, mtl):
 # ============================================================
 # UNIFIED PER-SCENE EXTRACTION
 # ============================================================
-def extract_scene(item, patch_bounds, patch_crs, *, source="usgs_toa",
-                  bands=OLI2_BANDS):
+def extract_scene(item, patch_bounds, patch_crs, *, bands=OLI2_BANDS):
     """Window every band + the SZA/VZA rasters for one scene; return a cube dict.
 
     Reads each of the 7 reflective bands and the two angle rasters over the patch
@@ -247,25 +242,24 @@ def extract_scene(item, patch_bounds, patch_crs, *, source="usgs_toa",
         wrs_row, refl: {asset: 2-D TOA refl (NaN where invalid)}, sza, vza (2-D deg,
         NaN where invalid), n_pixels, win_px, coverage}``.
     """
-    mtl = read_mtl(item, source) if source == "usgs_toa" else None
+    mtl = read_mtl(item)
     props = item.properties
 
     refl, per_band_valid = {}, {}
     transform = crs = None
     for b in bands:
-        dn, valid, tr, cr = read_window(resolve_href(item.assets[b["asset"]], source),
+        dn, valid, tr, cr = read_window(resolve_href(item.assets[b["asset"]]),
                                         patch_bounds, patch_crs)
         if transform is None:
             transform, crs = tr, cr                    # shared 30 m grid for all bands
-        rho = (to_toa_reflectance(dn, b["band_n"], mtl) if source == "usgs_toa"
-               else dn * 0.0000275 - 0.2)              # mpc_sr fallback scaling
+        rho = to_toa_reflectance(dn, b["band_n"], mtl)
         refl[b["asset"]] = np.where(valid, rho, np.nan)
         per_band_valid[b["asset"]] = valid
 
     # In-patch solar/view zenith (deg) from the L1 angle rasters (0.01 deg int16).
-    sza_dn, sza_ok, _, _ = read_window(resolve_href(item.assets[SZA_ASSET], source),
+    sza_dn, sza_ok, _, _ = read_window(resolve_href(item.assets[SZA_ASSET]),
                                        patch_bounds, patch_crs)
-    vza_dn, vza_ok, _, _ = read_window(resolve_href(item.assets[VZA_ASSET], source),
+    vza_dn, vza_ok, _, _ = read_window(resolve_href(item.assets[VZA_ASSET]),
                                        patch_bounds, patch_crs)
     sza = np.where(sza_ok, sza_dn * 0.01, np.nan)
     vza = np.where(vza_ok, vza_dn * 0.01, np.nan)
