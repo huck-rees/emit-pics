@@ -187,11 +187,22 @@ The OLI-2 relative spectral response used for the band comparison lives in `data
 
 ## Provenance
 
-Every data-product write also emits a sidecar `<output>.json` recording the UTC timestamp, git commit / branch / dirty flag, script name, Python + key package versions, and the exact `run_config` used. A CSV on disk can't tell you how it was made; its sidecar can — so every result is traceable to an exact code state. Sidecars live beside the (gitignored) data and travel with it when results are archived (e.g. to Zenodo).
+Every data-product write also emits a sidecar `<output>.json` recording the UTC timestamp, git commit / branch / dirty flag, script name, Python + key package versions, and the exact `run_config` used. A CSV on disk can't tell you how it was made; its sidecar can — so every result is traceable to an exact code state. Sidecars live beside the (gitignored) data and travel with it when the data are deposited (Dryad).
 
 ## Data products
 
 The columns and units of every output CSV/table are documented in **[`docs/data_dictionary.md`](docs/data_dictionary.md)**.
+
+## Data availability & reproduction
+
+This GitHub repository holds **code only** — the contents of `data/` and `figures/` are gitignored. The data needed to reproduce the manuscript are deposited separately at **Dryad**:
+
+- the per-channel stat tables, geometry, matched pairs, and the derived drift / design / band-comparison CSVs; and
+- the **QC worksheets** (`data/qc/*_qc.csv` and `data/landsat/qc/*_qc.csv`) — the record of the manual keep/remove verdicts (with reasons). Because the QC gate reads these, a run reproduces the **exact** screened scene set, so the pipeline's one manual step is fully captured and auditable.
+
+Not deposited (regenerable and bulky): the raw **pixel cubes** and the per-scene **QC snapshot PDFs**. A from-scratch rebuild re-streams/re-extracts those from Earthdata (EMIT) and the requester-pays `usgs-landsat` S3 (Landsat).
+
+To reproduce: create the env (Quick start), download the Dryad bundle into `data/`, then run the pipeline. From the shipped CSVs the figures rebuild directly (the drift / design tables are already QC-gated); a full rebuild from raw additionally needs the Earthdata / AWS credentials above.
 
 ## Pixel-cube cache
 

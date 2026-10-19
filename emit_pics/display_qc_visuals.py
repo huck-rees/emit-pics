@@ -14,8 +14,7 @@ Pure function library: no top-level execution, no hardcoded parameters, no
 ``__main__`` block, no import side effects.  ``earthaccess.login`` is not called
 here; the caller authenticates before streaming.
 
-Low-level helpers proven elsewhere in the package are reused rather than
-duplicated:
+Reuses from elsewhere in the package:
 
 * timestamp parsing / band-by-label lookup / KDTree patch mask / granule lookup
   from :mod:`emit_pics.id_matched_pairs`;
