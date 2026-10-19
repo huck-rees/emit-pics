@@ -27,9 +27,7 @@ from emit_pics.id_matched_pairs import (
     acq_timestamp, band_index, load_patch_dict, split_products,
 )
 
-# ============================================================
 # CONSTANTS
-# ============================================================
 #: Fill values to NaN out before computing stats (np.isclose comparison).
 RFL_FILLS = (-9999.0, -0.01)   # L2A reflectance
 RAD_FILLS = (-9999.0,)         # L1B radiance
@@ -47,9 +45,7 @@ OBS_TOKEN  = "_OBS_"    # L1B observation geometry (bundled in the RAD granule)
 _STAT_KEYS = ["min", "1qt", "median", "3qt", "max", "mean", "std"]
 
 
-# ============================================================
 # ACQUISITION PAIRING
-# ============================================================
 # ``load_patch_dict`` and ``split_products`` are defined once in
 # ``emit_pics.id_matched_pairs`` and re-exported here (imported at the top of
 # this module), so the historical ``from emit_pics.extract_patch_stats import
@@ -83,9 +79,7 @@ def pair_acquisitions(rad_urs: list[str], rfl_urs: list[str]) -> list[dict]:
     return out
 
 
-# ============================================================
 # RETRY WRAPPER
-# ============================================================
 def with_retry(open_fn, n_retries: int = 3, backoff: int = 5, label: str = ""):
     """Call *open_fn* (zero-arg), retrying transient server errors w/ backoff.
 
@@ -105,9 +99,7 @@ def with_retry(open_fn, n_retries: int = 3, backoff: int = 5, label: str = ""):
                 raise
 
 
-# ============================================================
 # GRANULE OPENERS
-# ============================================================
 def find_asset_url(granule, token: str) -> str:
     """Return the data link in *granule* whose **file name** contains *token*.
 
@@ -173,9 +165,7 @@ def close_handles(handles) -> None:
             pass
 
 
-# ============================================================
 # WINDOWING
-# ============================================================
 def window_bounds(mask: np.ndarray):
     """Tight (r0, r1, c0, c1) bounding the ``True`` pixels of *mask*.
 
@@ -216,9 +206,7 @@ def window_pixels(cube_da, bounds, keep_sub: np.ndarray) -> np.ndarray:
     return win[keep_sub]
 
 
-# ============================================================
 # PER-CHANNEL STATISTICS
-# ============================================================
 def per_channel_stats(values: np.ndarray, wavelengths: np.ndarray,
                       fills: tuple, suffix: str) -> pd.DataFrame:
     """Per-channel summary stats over kept in-patch pixels.
@@ -267,9 +255,7 @@ def per_channel_stats(values: np.ndarray, wavelengths: np.ndarray,
     })
 
 
-# ============================================================
 # CSV OUTPUT
-# ============================================================
 def write_perchannel_csv(df: pd.DataFrame, path) -> None:
     """Write *df* to *path*, creating the parent directory if needed."""
     os.makedirs(os.path.dirname(path), exist_ok=True)

@@ -59,9 +59,7 @@ from emit_pics.single_patch_cube_extract import (
 from emit_pics.qc_gate import build_qc_sheet
 
 
-# ============================================================
 # CONFIG
-# ============================================================
 @dataclass
 class QCConfig:
     """All inputs for one patch's QC report (paths + options)."""
@@ -129,9 +127,7 @@ class EarthdataLogin:
             self._done = True
 
 
-# ============================================================
 # SPECTRA CONTEXT
-# ============================================================
 def load_spectra_context(cfg: QCConfig):
     """Load every patch scene's per-channel spectrum once for the spectra panels.
 
@@ -153,9 +149,7 @@ def load_spectra_context(cfg: QCConfig):
     return {"entries": loaded, "bad_bands": bad_bands, "stat": cfg.spectra_stat}, missing
 
 
-# ============================================================
 # PER-ACQUISITION RENDER
-# ============================================================
 def _render_from_cube(cfg, cube_path, ts, dt, patch_geom, pics_poly, spectra, pdf) -> str:
     """Render one acquisition's page from a cached pixel cube — no network."""
     ds = read_cube_netcdf(cube_path)
@@ -232,9 +226,7 @@ def _process_acquisition(cfg, acq, patch_geom, pics_poly, spectra, pdf, login) -
         close_handles(rfl["_handles"])
 
 
-# ============================================================
 # PER-PATCH DRIVER
-# ============================================================
 def run_patch_qc(cfg: QCConfig, login: EarthdataLogin, dict_df=None) -> dict:
     """Build one patch's QC report; return a summary dict.
 

@@ -37,9 +37,7 @@ from emit_pics.delta_calculations import (
 )
 from emit_pics.id_matched_pairs import acq_timestamp
 
-# ============================================================
 # CONSTANTS
-# ============================================================
 #: High-resolution export DPI for the PNGs.
 FIG_DPI = 1000
 
@@ -66,9 +64,7 @@ PRODUCTS = {
 }
 
 
-# ============================================================
 # LOADING
-# ============================================================
 def load_patch_spectra(scenes: pd.DataFrame, pics_id: str, patch_id: str,
                        rfl_dir: Path, rad_dir: Path,
                        *, earth_sun_normalize: bool = True,
@@ -148,9 +144,7 @@ def mask_absorption(wl: np.ndarray, values: np.ndarray,
     return v
 
 
-# ============================================================
 # PLOTTING
-# ============================================================
 def _legend_cols(n: int) -> int:
     """Number of legend columns for *n* scenes (keeps the legend from running off)."""
     return 1 if n <= 22 else 2 if n <= 44 else 3

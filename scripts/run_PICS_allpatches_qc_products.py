@@ -27,9 +27,7 @@ from emit_pics import paths
 from emit_pics.config import canonical_token
 from emit_pics.run_config import load_config
 
-# ============================================================
 # INPUTS — set the analysis target in run_config.yaml, not here.
-# ============================================================
 cfg_run = load_config()
 PICS_ID    = canonical_token(cfg_run.site)   # canonical filename/label token, e.g. "Libya_4"
 PATCH_SIZE = cfg_run.patch_size

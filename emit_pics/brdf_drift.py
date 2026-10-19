@@ -45,9 +45,7 @@ _TS_FMT = "%Y%m%dT%H%M%S"
 _YR_SEC = 365.25 * 86400
 
 
-# ============================================================
 # MODEL
-# ============================================================
 def _resid(x, S, sidx, g, t, rho):
     """Residual of ``(alpha_s + beta_s*g)(1 + gamma*t) - rho`` for a ``2S+1`` vector.
 
@@ -60,9 +58,7 @@ def _resid(x, S, sidx, g, t, rho):
     return (a + b * g) * (1 + ga * t) - rho
 
 
-# ============================================================
 # PER-SITE STANDALONE FIT (§4b — shared-drift consistency check)
-# ============================================================
 def fit_site(g, t, rho):
     """Standalone 3-parameter fit ``[alpha, beta, gamma]`` for one site/channel.
 
@@ -193,9 +189,7 @@ def consistency_check(persite, *, marginal_ratio=0.25):
     return {"overall": overall, "per_product": per_product}
 
 
-# ============================================================
 # JOINT POOLED FIT (§5 — per-site alpha/beta, one shared gamma)
-# ============================================================
 def _build(frame, product):
     """Extract ``(sites, sidx, g, t, rho)`` for *product* from a design frame."""
     sites = sorted(frame["site"].unique())
@@ -230,9 +224,7 @@ def fit_joint(frame, product):
             "g": g, "t": t, "rho": rho, "n": int(g.size)}
 
 
-# ============================================================
 # POOLED GAMMA BOOTSTRAP (§7 — stratified within-site)
-# ============================================================
 def bootstrap_joint_gamma(frame, product, n_boot, seed=42):
     """Bootstrap the pooled shared ``gamma`` by stratified within-site resampling.
 
@@ -255,9 +247,7 @@ def bootstrap_joint_gamma(frame, product, n_boot, seed=42):
             "ci": np.percentile(draws, [2.5, 97.5]), "draws": draws}
 
 
-# ============================================================
 # PER-CHANNEL GAMMA (§8 — the gamma(lambda) drift spectrum)
-# ============================================================
 def _warm(S, sidx, g, t, rho):
     """Warm-start ``2S+1`` vector: per-site OLS alpha/beta (single-scene -> mean)."""
     a0, b0 = np.zeros(S), np.zeros(S)
@@ -301,9 +291,7 @@ def channel_gamma(rho, g_all, t_all, site_all, n_boot, rng):
     return gam, (ci[0], ci[1]), pval, int(r.size)
 
 
-# ============================================================
 # ASSEMBLY / IO  (reuses the pipeline's geometry / QC / spectra loaders)
-# ============================================================
 def resolve_roster(cfg):
     """Map the configured roster to valid, non-excluded PICS (§1).
 

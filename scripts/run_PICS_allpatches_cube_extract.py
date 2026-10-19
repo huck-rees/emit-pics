@@ -84,9 +84,7 @@ from emit_pics.PICS_allpatches_cube_extract import (
     patch_ids_for_size,
 )
 
-# ============================================================
 # INPUTS — set the analysis target in run_config.yaml, not here.
-# ============================================================
 cfg = load_config()
 PICS_ID    = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"
 PATCH_SIZE = cfg.patch_size

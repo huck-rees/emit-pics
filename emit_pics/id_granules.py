@@ -19,9 +19,7 @@ import pandas as pd
 from shapely.geometry import Polygon
 
 
-# ============================================================
 # LOADING
-# ============================================================
 def load_pics(gpkg_path: Path, pics_name: str) -> gpd.GeoDataFrame:
     """Load a single PICS site row from a GeoPackage.
 
@@ -86,9 +84,7 @@ def load_patches(bnds_path: Path, size_km: int) -> gpd.GeoDataFrame:
     return subset
 
 
-# ============================================================
 # EARTHACCESS SEARCH
-# ============================================================
 def search_granules(
     short_name: str,
     bbox: tuple[float, float, float, float],
@@ -122,9 +118,7 @@ def search_granules(
     )
 
 
-# ============================================================
 # UMM METADATA HELPERS
-# ============================================================
 def granule_footprint(umm: dict) -> Polygon:
     """Reconstruct a granule's footprint polygon from its UMM GPolygons.
 
@@ -180,9 +174,7 @@ def granule_ur(umm: dict) -> str:
     return umm["GranuleUR"]
 
 
-# ============================================================
 # FOOTPRINT GEODATAFRAME
-# ============================================================
 def footprints_to_gdf(
     granules: list,
     product: str,
@@ -215,9 +207,7 @@ def footprints_to_gdf(
     return gpd.GeoDataFrame(records, crs="EPSG:4326")
 
 
-# ============================================================
 # PATCH COVERAGE
-# ============================================================
 def patches_covered_by_granule(
     patch_gdf: gpd.GeoDataFrame,
     footprints: gpd.GeoDataFrame,
@@ -259,9 +249,7 @@ def patches_covered_by_granule(
     return coverage
 
 
-# ============================================================
 # PLOTTING
-# ============================================================
 def plot_patch_coverage(
     patches: gpd.GeoDataFrame,
     site: gpd.GeoDataFrame,

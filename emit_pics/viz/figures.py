@@ -752,13 +752,11 @@ def brdf_single_channel(joint, boots, T0, *, target_wl=None,
     return fig
 
 
-# ============================================================
 # STUDY-OVERVIEW PIECES (Fig. 1) — emitted as SEPARATE figures so each can be
 # placed independently in Affinity (the Libya-4 RGB is a third piece, added by
 # hand). No panel letters are drawn; label them in the layout tool.
 #   site_overview_map     — North-African PICS locator over faded satellite imagery
 #   patch_coverage_single — one PICS's patch grid shaded by per-patch coverage (n)
-# ============================================================
 
 #: A light halo so on-map text stays legible over imagery and colour fills.
 def _halo(lw=1.6, fg="white"):

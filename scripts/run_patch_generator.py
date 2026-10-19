@@ -16,9 +16,7 @@ from emit_pics.patch_generator import (
     write_outputs,
 )
 
-# ============================================================
 # INPUTS — set the analysis target in run_config.yaml, not here.
-# ============================================================
 cfg = load_config()
 PICS_NAME = canonical_token(cfg.site)   # canonical filename token, e.g. "Libya_4"
 MIN_PATCH_KM = cfg.min_patch_km         # smallest patch edge length (km)

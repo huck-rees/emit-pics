@@ -54,9 +54,7 @@ from emit_pics.extract_patch_stats import (
 )
 from emit_pics.display_spectra import PRODUCTS, mask_absorption
 
-# ============================================================
 # CONSTANTS
-# ============================================================
 #: MASK band labels that are binary flags (rendered discrete green/red).  Any
 #: MASK band whose label is NOT in this set is treated as continuous (colorbar).
 BINARY_FLAGS = {
@@ -95,9 +93,7 @@ SPECTRA_BG_COLOR      = "0.6"        # every other scene covering the patch
 SPECTRA_STAT_DEFAULT  = "median"     # in-patch statistic plotted per scene
 
 
-# ============================================================
 # GRANULE OPENERS
-# ============================================================
 def open_rfl_mask(granule) -> dict:
     """Open the L2A reflectance file and its sibling MASK file once.
 
@@ -169,9 +165,7 @@ def open_obs(granule) -> dict:
     }
 
 
-# ============================================================
 # PURE DATA HELPERS
-# ============================================================
 def nearest_band(wavelengths: np.ndarray, target_nm: float) -> int:
     """Index of the channel whose central wavelength is closest to *target_nm*."""
     return int(np.argmin(np.abs(np.asarray(wavelengths, dtype=float) - target_nm)))
@@ -323,9 +317,7 @@ def load_pics_polygon(pics_gpkg, pics_name: str):
     return gpd.GeoSeries([sub.geometry.iloc[0]], crs=g.crs).to_crs(4326).iloc[0]
 
 
-# ============================================================
 # FIGURE ASSEMBLY
-# ============================================================
 def _draw_flag(ax, fig, arr):
     """Discrete green(0)/red(1) flag panel, no colorbar."""
     cmap = ListedColormap([FLAG_GOOD_COLOR, FLAG_BAD_COLOR])

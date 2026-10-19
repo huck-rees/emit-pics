@@ -32,9 +32,7 @@ import matplotlib.pyplot as plt
 from emit_pics import paths
 from emit_pics.landsat_cube_extract import OLI2_BANDS
 
-# ============================================================
 # CONSTANTS
-# ============================================================
 #: Band indices into the cube's first 7 layers (OLI2_BANDS order:
 #: coastal, blue, green, red, nir08, swir16, swir22).
 _IDX = {b["asset"]: i for i, b in enumerate(OLI2_BANDS)}
@@ -48,9 +46,7 @@ RGB_VMAX = 0.45
 RGB_GAMMA = 1.4
 
 
-# ============================================================
 # RGB
-# ============================================================
 def rgb_composite(data, vmax=RGB_VMAX, gamma=RGB_GAMMA):
     """True-ish color from a cube's (band, y, x) array, ONE shared scale for R/G/B.
 
@@ -64,9 +60,7 @@ def rgb_composite(data, vmax=RGB_VMAX, gamma=RGB_GAMMA):
     return np.nan_to_num(out, nan=0.0)
 
 
-# ============================================================
 # SPECTRA CONTEXT
-# ============================================================
 def load_toa_spectra(pics_id, patch_id):
     """Every scene's 7-band in-patch TOA spectrum for the overlay panel.
 
@@ -85,9 +79,7 @@ def load_toa_spectra(pics_id, patch_id):
     return out
 
 
-# ============================================================
 # PER-SCENE FIGURE
-# ============================================================
 def render_scene_figure(cube, *, pics_id, patch_id, scene_ts, acq_dt=None,
                         spectra=None, fig=None, resize=True):
     """Render one Landsat scene's QC page: RGB, NIR, SZA, VZA + a TOA spectrum panel.

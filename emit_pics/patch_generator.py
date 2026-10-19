@@ -15,9 +15,7 @@ import numpy as np
 from shapely.geometry import box
 
 
-# ============================================================
 # LOADING
-# ============================================================
 def load_pics(gpkg_path: Path) -> gpd.GeoDataFrame:
     """Load all PICS boundaries from the GeoPackage."""
     return gpd.read_file(gpkg_path)
@@ -37,9 +35,7 @@ def select_site(pics_gdf: gpd.GeoDataFrame, name: str) -> gpd.GeoDataFrame:
     return site
 
 
-# ============================================================
 # TILING
-# ============================================================
 def _tile_one_size(cx: float, cy: float, size_m: float,
                    bounds: tuple, polygon) -> list[dict]:
     """Generate square patches on a centroid-anchored grid at one size.
@@ -132,9 +128,7 @@ def generate_patches(site_utm: gpd.GeoDataFrame,
     return gpd.GeoDataFrame(records, crs=site_utm.crs)
 
 
-# ============================================================
 # OUTPUT
-# ============================================================
 def _safe_filename(pics_name: str) -> str:
     """Replace spaces with underscores for use in filenames."""
     return pics_name.replace(" ", "_")

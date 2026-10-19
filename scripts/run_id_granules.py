@@ -31,9 +31,7 @@ from emit_pics.id_granules import (
     plot_patch_coverage,
 )
 
-# ============================================================
 # INPUTS — set the analysis target in run_config.yaml, not here.
-# ============================================================
 cfg = load_config()
 SITE          = cfg.site                     # any spelling; pics_geodataframe resolves it
 PATCH_SIZE_KM = cfg.search_patch_size_km     # patch edge length to analyze (km)

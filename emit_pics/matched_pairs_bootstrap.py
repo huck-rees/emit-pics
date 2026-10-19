@@ -58,9 +58,7 @@ _REQUIRED_COLS = {
 }
 
 
-# ============================================================
 # EDGE LIST
-# ============================================================
 def build_edges(band_df, delta_col):
     """Group one band's per-patch delta rows into an edge list per PICS.
 
@@ -98,9 +96,7 @@ def build_edges(band_df, delta_col):
     return edges_by_pics
 
 
-# ============================================================
 # SLOPE (POINT ESTIMATE + ONE BOOTSTRAP DRAW)
-# ============================================================
 def point_slope(edges_by_pics):
     """Point estimate: Theil-Sen on the median-ΔR-per-edge, pooled across PICS.
 
@@ -144,9 +140,7 @@ def resample_slope(edges_by_pics, rng):
     return float(theilslopes(y, x)[0]), x.size
 
 
-# ============================================================
 # CHANNEL BOOTSTRAP
-# ============================================================
 def _nan_boot(n_scenes, n_edges, n_valid):
     """Bootstrap-stat dict with NaN estimates (absorption / unfittable channel)."""
     return {"slope_pct_yr": np.nan, "ci_low_pct_yr": np.nan,
@@ -203,9 +197,7 @@ def bootstrap_channel(edges_by_pics, n_boot, rng, *, alpha=DEFAULT_ALPHA):
     }
 
 
-# ============================================================
 # SPECTRUM
-# ============================================================
 def compute_bootstrap_drift_spectrum(df, product, *, n_boot=1000,
                                      alpha=DEFAULT_ALPHA, seed=0):
     """Per-channel matched-pairs bootstrap drift spectrum for one product.

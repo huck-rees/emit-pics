@@ -34,9 +34,7 @@ import sys
 from emit_pics import paths, provenance
 from emit_pics.run_config import load_config
 
-# ============================================================
 # INPUTS — set the analysis target in run_config.yaml, not here.
-# ============================================================
 cfg = load_config()
 paths.set_variant(cfg.output_variant)   # nest derived outputs under an active radiometry variant
 PATCH_SIZE  = cfg.patch_size

@@ -49,9 +49,7 @@ from emit_pics.extract_patch_stats import load_patch_dict
 from emit_pics.id_matched_pairs import sniff_delimiter
 from emit_pics.PICS_allpatches_cube_extract import patch_ids_for_size
 
-# ============================================================
 # INPUTS — set the analysis target in run_config.yaml, not here.
-# ============================================================
 cfg = load_config()
 paths.set_variant(cfg.output_variant)   # nest derived outputs under an active radiometry variant
 PICS_ID    = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"

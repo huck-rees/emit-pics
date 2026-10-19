@@ -46,9 +46,7 @@ from emit_pics import brdf_drift, paths, provenance
 from emit_pics.run_config import load_config
 from emit_pics.viz import figures as vizfigures, style
 
-# ============================================================
 # INPUTS — set the roster + knobs in run_config.yaml (brdf:), not here.
-# ============================================================
 cfg = load_config()
 paths.set_variant(cfg.output_variant)   # nest derived outputs under an active radiometry variant
 paths.set_brdf_label(cfg.brdf_label)    # extra BRDF-only sub-namespace (e.g. patch-size sweep)

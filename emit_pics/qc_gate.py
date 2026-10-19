@@ -43,9 +43,7 @@ class QCReviewRequired(Exception):
     """Raised by :func:`apply_qc_filter` when the QC gate blocks a run."""
 
 
-# ============================================================
 # PARSING HELPERS
-# ============================================================
 def _truthy(v) -> bool:
     """Interpret a reviewed/boolean cell as True (TRUE/1/YES/Y)."""
     return str(v).strip().upper() in {"TRUE", "1", "YES", "Y"}
@@ -65,9 +63,7 @@ def _blank(v) -> str:
     return "" if v is None or (isinstance(v, float) and np.isnan(v)) else str(v)
 
 
-# ============================================================
 # GLANCE METRIC
-# ============================================================
 def _agg_pct(mask_dir, pics_id: str, patch_id: str, ts: str) -> float:
     """Aggregate-Flag flagged-% for one scene from its MASK summary, or NaN."""
     if mask_dir is None:
@@ -86,9 +82,7 @@ def _agg_pct(mask_dir, pics_id: str, patch_id: str, ts: str) -> float:
         return np.nan
 
 
-# ============================================================
 # WORKSHEET BUILD / REFRESH
-# ============================================================
 def build_qc_sheet(geom_path, qc_path, *, mask_dir=None,
                    pics_id: str, patch_id: str):
     """Create or non-destructively refresh a patch's QC worksheet.
@@ -145,9 +139,7 @@ def build_qc_sheet(geom_path, qc_path, *, mask_dir=None,
     return base, new_ts
 
 
-# ============================================================
 # DOWNSTREAM FILTER
-# ============================================================
 def is_reviewed(qc_path) -> bool:
     """True if the QC worksheet exists and its top-row ``reviewed`` flag is set.
 

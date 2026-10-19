@@ -80,9 +80,7 @@ from emit_pics.single_patch_cube_extract import (
     write_cube_netcdf,
 )
 
-# ============================================================
 # INPUTS — set the analysis target in run_config.yaml, not here.
-# ============================================================
 cfg = load_config()
 PICS_ID  = canonical_token(cfg.site)   # canonical filename/label token, e.g. "Libya_4"
 PATCH_ID = cfg.patch

@@ -51,9 +51,7 @@ from rasterio.windows import from_bounds
 from shapely.geometry import shape
 
 
-# ============================================================
 # BAND METADATA  (OLI-2 reflective bands 1-7; pan/cirrus excluded)
-# ============================================================
 #: (asset key, MTL band number, nominal band-center wavelength nm). ``center_nm``
 #: becomes the ``central_wl`` grid the per-band table is keyed on. The two flagged
 #: bands land on EMIT's significant-drift regions (858 nm; 2000-2370 nm).
@@ -74,9 +72,7 @@ SZA_ASSET, VZA_ASSET = "SZA", "VZA"
 FILL = 0
 
 
-# ============================================================
 # STAC SEARCH / SCENE DISCOVERY
-# ============================================================
 def search_scenes(catalog, collection, patch_wgs84, date_start, date_end, *,
                   platform="landsat-9", max_cloud=100.0, dedupe_overpass=True,
                   max_retries=4, backoff=3):
@@ -160,9 +156,7 @@ def _dedupe_overpass(items, patch_wgs84):
     return kept
 
 
-# ============================================================
 # ACCESS HELPERS  (STAC asset -> windowed COG read)
-# ============================================================
 def resolve_href(asset):
     """GDAL-openable href for a STAC asset (USGS requester-pays s3 preferred)."""
     alt = (asset.extra_fields or {}).get("alternate", {})
@@ -224,9 +218,7 @@ def to_toa_reflectance(dn, band_n, mtl):
     return (mult * dn + add) / np.sin(np.radians(sun_elev))
 
 
-# ============================================================
 # UNIFIED PER-SCENE EXTRACTION
-# ============================================================
 def extract_scene(item, patch_bounds, patch_crs, *, bands=OLI2_BANDS):
     """Window every band + the SZA/VZA rasters for one scene; return a cube dict.
 
@@ -284,9 +276,7 @@ def extract_scene(item, patch_bounds, patch_crs, *, bands=OLI2_BANDS):
     }
 
 
-# ============================================================
 # IN-MEMORY DERIVATIONS  (schemas matched to the EMIT side)
-# ============================================================
 def _dist_stats(a, prefix):
     """mean/std/min/max + p25/p50/p75 of the finite values of *a*, keyed by prefix.
 
@@ -347,9 +337,7 @@ def channel_stats_from_cube(cube, bands=OLI2_BANDS):
     return pd.DataFrame(rows)
 
 
-# ============================================================
 # PIXEL-CUBE PERSISTENCE  (GeoTIFF, optional — for offline manual QC)
-# ============================================================
 def write_cube_geotiff(cube, path):
     """Persist the windowed in-patch cube to a georeferenced multi-band GeoTIFF.
 
@@ -407,9 +395,7 @@ def bands_of(cube):
     return cube.get("bands", OLI2_BANDS)
 
 
-# ============================================================
 # PATCH GEOMETRY  (same polygon the EMIT pipeline uses)
-# ============================================================
 def load_patch(bnds_path, patch_id):
     """Return ``(patch_bounds, patch_crs, patch_wgs84)`` for one patch id.
 
@@ -425,9 +411,7 @@ def load_patch(bnds_path, patch_id):
             sel.to_crs(4326).geometry.iloc[0])
 
 
-# ============================================================
 # INTERNAL
-# ============================================================
 def _ts_from_datetime(dt_iso):
     """ISO acquisition datetime -> the canonical ``YYYYMMDDThhmmss`` timestamp token."""
     if dt_iso is None:
@@ -435,9 +419,7 @@ def _ts_from_datetime(dt_iso):
     return pd.to_datetime(dt_iso).strftime("%Y%m%dT%H%M%S")
 
 
-# ============================================================
 # TODO / open items (see the module docstring + the Landsat memory note)
-# ============================================================
 # * Pixel-cube cache: available via write_cube_geotiff() (opt-in, off by default).
 #   Windowed COG reads are cheap, so it is not needed for the drift fit — its
 #   purpose is offline manual QC (RGB/NIR panels) without re-streaming.

@@ -31,9 +31,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# ============================================================
 # CONSTANTS
-# ============================================================
 DAYS_PER_YEAR = 365.25
 MIN_PAIRS = 3               #: fewest points needed to fit a channel
 DEFAULT_ALPHA = 0.05        #: per-channel significance level (uncorrected bootstrap p)
@@ -61,9 +59,7 @@ _REQUIRED_COLS = {
 }
 
 
-# ============================================================
 # STYLING / SMALL HELPERS
-# ============================================================
 def pics_style(pics_id):
     """(colour, marker) for a PICS id, with a grey fallback for unknown sites."""
     return PICS_STYLE.get(str(pics_id), _FALLBACK_STYLE)
@@ -92,9 +88,7 @@ def absorption_band_indices(df):
                   if _truthy_any(g["absorption_band_flag"]))
 
 
-# ============================================================
 # LOADING
-# ============================================================
 def load_delta_tables(delta_dir, patch_size, *, glob_pattern="*_delta.csv"):
     """Concatenate all delta CSVs of one patch size across PICS/patches.
 
@@ -145,9 +139,7 @@ def load_delta_tables(delta_dir, patch_size, *, glob_pattern="*_delta.csv"):
     return out
 
 
-# ============================================================
 # FIGURE (returned, not saved)
-# ============================================================
 def _absorption_spans(spec):
     """Contiguous (wl_lo, wl_hi) wavelength ranges flagged as absorption bands."""
     if "absorption_band" not in spec:

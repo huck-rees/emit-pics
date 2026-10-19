@@ -33,9 +33,7 @@ import shapely
 import xarray as xr
 from scipy.spatial import cKDTree
 
-# ============================================================
 # CONSTANTS
-# ============================================================
 #: OBS band labels, looked up by name (never by hardcoded index).
 SZA_LABEL = "To-sun zenith (0 to 90 degrees from zenith)"
 VZA_LABEL = "To-sensor zenith (0 to 90 degrees from zenith)"
@@ -60,9 +58,7 @@ STAT_COLS = [
 ]
 
 
-# ============================================================
 # IO HELPERS
-# ============================================================
 def sniff_delimiter(path: Path) -> str:
     """Return ``"\\t"`` if the file's header line contains a tab, else ``","``.
 
@@ -148,9 +144,7 @@ def load_patch_geom_4326(bnds_path: Path, patch_id: str):
     return sub.to_crs("EPSG:4326").geometry.iloc[0]
 
 
-# ============================================================
 # TIMESTAMPS & COINCIDENCE
-# ============================================================
 def acq_timestamp(granule_ur: str) -> str:
     """Extract the ``YYYYMMDDThhmmss`` acquisition timestamp from a GranuleUR.
 
@@ -203,9 +197,7 @@ def build_acquisitions(rad_urs: list[str], rfl_urs: list[str]) -> list[dict]:
     return acqs
 
 
-# ============================================================
 # EARTHACCESS GRANULE LOOKUP
-# ============================================================
 def fetch_granule(short_name: str, granule_ur: str):
     """Resolve a GranuleUR to its earthaccess result object via CMR.
 
@@ -253,9 +245,7 @@ def find_obs_url(granule) -> str:
     return obs[0]
 
 
-# ============================================================
 # OBS STREAMING
-# ============================================================
 def band_index(band_labels, label: str) -> int:
     """Return the index of *label* within the observation-band label array.
 
@@ -468,9 +458,7 @@ def scene_geometry_stats(granule, patch_geom_4326,
     return stats
 
 
-# ============================================================
 # MATCHED PAIRS
-# ============================================================
 def find_matched_pairs(scenes: pd.DataFrame,
                        sza_tol: float, vza_tol: float,
                        min_dt_days: float = 0.0) -> pd.DataFrame:
@@ -523,9 +511,7 @@ def find_matched_pairs(scenes: pd.DataFrame,
     return pd.DataFrame(rows, columns=cols)
 
 
-# ============================================================
 # PLOTTING
-# ============================================================
 def plot_matched_pairs(scenes: pd.DataFrame, matched: pd.DataFrame,
                        patch_id: str, sza_tol: float, vza_tol: float):
     """Build the two-panel SZA/VZA-over-time figure with matched-pair links.

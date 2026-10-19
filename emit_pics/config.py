@@ -33,9 +33,7 @@ def _norm(s: str) -> str:
     return str(s).strip().lower().replace(" ", "_")
 
 
-# ============================================================
 # LOADING
-# ============================================================
 def load_sites(config_path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
     """Load all PICS site definitions, keyed by their YAML slug (e.g. ``libya_4``)."""
     with open(config_path) as f:
@@ -92,9 +90,7 @@ def canonical_token(site_id: str, config_path: Path = DEFAULT_CONFIG) -> str:
     return get_site(site_id, config_path)["site_name"].replace(" ", "_")
 
 
-# ============================================================
 # GEOMETRY
-# ============================================================
 def pics_polygon(site_id: str, config_path: Path = DEFAULT_CONFIG):
     """Return a site's ROI as a shapely rectangle (Polygon) in EPSG:4326.
 
@@ -160,9 +156,7 @@ def pics_geodataframe(site_id: Optional[str] = None,
     ]
 
 
-# ============================================================
 # GPKG EXPORT (option B — derived, for GIS use only)
-# ============================================================
 def write_pics_gpkg(out_path: Path, config_path: Path = DEFAULT_CONFIG) -> Path:
     """Regenerate ``northafrican_pics.gpkg`` from the YAML (a derived output).
 

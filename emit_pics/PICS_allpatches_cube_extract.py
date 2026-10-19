@@ -62,9 +62,7 @@ from emit_pics.single_patch_cube_extract import (
 )
 
 
-# ============================================================
 # ACQUISITION -> PATCHES INVERSE MAP (no network)
-# ============================================================
 def patch_ids_for_size(dict_df, size_token) -> list:
     """Every ``patch_id`` in the dict whose size field matches *size_token*.
 
@@ -116,9 +114,7 @@ def build_acquisition_patch_map(dict_df, patch_ids):
     return acquisitions, patches_by_ts
 
 
-# ============================================================
 # REUSABLE GEOLOCATION INDEX (built once per granule)
-# ============================================================
 def build_geo_index(lon: np.ndarray, lat: np.ndarray) -> dict:
     """Build the per-granule geolocation index reused by every patch mask.
 
@@ -175,9 +171,7 @@ def mask_from_geo_index(geo: dict, patch_geom_4326, pad: float = 1.10) -> np.nda
     return mask_flat.reshape(shape)
 
 
-# ============================================================
 # PER-GRANULE OPEN (once) + PER-PATCH EXTRACT (many)
-# ============================================================
 def open_acquisition_grid(acq: dict, *, rfl_short: str, rad_short: str,
                           want_obs: bool = True):
     """Open one acquisition's assets once and index its geolocation once.

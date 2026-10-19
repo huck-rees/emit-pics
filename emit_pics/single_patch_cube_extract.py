@@ -75,9 +75,7 @@ from emit_pics.extract_patch_stats import (
     with_retry,
 )
 
-# ============================================================
 # CONSTANTS
-# ============================================================
 #: MASK band labels that are binary flags (summarized as a flagged percentage).
 #: Any MASK band whose label is NOT in this set is treated as continuous.
 BINARY_FLAGS = {
@@ -86,9 +84,7 @@ BINARY_FLAGS = {
 }
 
 
-# ============================================================
 # GRANULE OPENERS (neutral; no plotting dependency)
-# ============================================================
 def open_rfl_mask(granule) -> dict:
     """Open the L2A reflectance file and its sibling MASK file once.
 
@@ -142,9 +138,7 @@ def open_obs(granule) -> dict:
     }
 
 
-# ============================================================
 # WINDOWING HELPER
-# ============================================================
 def _win_np(arr: np.ndarray, bounds) -> np.ndarray:
     """Slice a full-scene 2-D NumPy array to the (r0, r1, c0, c1) window."""
     r0, r1, c0, c1 = bounds
@@ -173,9 +167,7 @@ def _footprint_wkt(umm: dict):
         return None
 
 
-# ============================================================
 # UNIFIED EXTRACTION
-# ============================================================
 def extract_acquisition(acq: dict, patch_geom_4326, *, patch_id: str,
                         rfl_short: str, rad_short: str, want_obs: bool = True,
                         n_retries: int = 3, backoff: int = 5):
@@ -301,9 +293,7 @@ def extract_acquisition(acq: dict, patch_geom_4326, *, patch_id: str,
         close_handles(handles)
 
 
-# ============================================================
 # IN-MEMORY DERIVATIONS (no network)
-# ============================================================
 def geometry_stats_from_cube(cube: dict):
     """Per-scene SZA/VZA distribution stats from a cube's geometry pixels.
 
@@ -391,9 +381,7 @@ def mask_summaries_from_cube(cube: dict):
     return pd.DataFrame(rows, columns=cols)
 
 
-# ============================================================
 # PIXEL-CUBE PERSISTENCE (NetCDF)
-# ============================================================
 def write_cube_netcdf(cube: dict, path: Path) -> Path:
     """Persist a raw, unscreened in-patch pixel cube to NetCDF.
 
@@ -463,9 +451,7 @@ def read_cube_netcdf(path: Path) -> xr.Dataset:
     return xr.open_dataset(Path(path), engine="netcdf4")
 
 
-# ============================================================
 # CUBE -> QC RENDER INPUTS (offline)
-# ============================================================
 def cube_to_render_inputs(ds: xr.Dataset):
     """Rebuild the windowed 2-D inputs that ``render_scene_figure`` expects.
 

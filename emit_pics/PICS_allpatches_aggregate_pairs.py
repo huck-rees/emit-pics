@@ -40,9 +40,7 @@ import pandas as pd
 
 from emit_pics.matched_pairs_drift_analysis import load_delta_tables, patch_size_of
 
-# ============================================================
 # CONSTANTS
-# ============================================================
 #: Per-channel delta columns collapsed by the across-patch MEDIAN.
 DELTA_VALUE_COLS = [
     "delta_rfl_pct_median", "delta_rfl_pct_mean",
@@ -87,9 +85,7 @@ AGG_CSV_COLS = (
 )
 
 
-# ============================================================
 # LOADING
-# ============================================================
 def load_patch_delta_tables(delta_dir, pics_id, patch_size, *,
                             glob_pattern="*_delta.csv"):
     """Pool the per-patch delta CSVs for ONE PICS at one patch size.
@@ -126,9 +122,7 @@ def load_patch_delta_tables(delta_dir, pics_id, patch_size, *,
     return df
 
 
-# ============================================================
 # AGGREGATION
-# ============================================================
 def _median(series):
     """Across-patch median of a column coerced to float (NaNs ignored)."""
     vals = pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
@@ -224,9 +218,7 @@ def aggregate_by_pair(df):
     return out.reindex(columns=AGG_CSV_COLS)
 
 
-# ============================================================
 # WRITING / SUMMARY
-# ============================================================
 def write_aggregated_table(agg_df, out_path):
     """Write the aggregated tidy table (one row per pair × channel).
 

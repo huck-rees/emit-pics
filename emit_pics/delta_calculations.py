@@ -28,9 +28,7 @@ import pandas as pd
 from emit_pics.earth_sun import normalize_radiance_spectrum
 from emit_pics.id_matched_pairs import acq_datetime, acq_timestamp
 
-# ============================================================
 # CONSTANTS
-# ============================================================
 #: Output column order of the tidy long delta table.
 DELTA_CSV_COLS = [
     "PICS_ID", "patch_id", "pair_id",
@@ -67,9 +65,7 @@ _EPS = 1e-6
 WL_MATCH_TOL_NM = 3.0
 
 
-# ============================================================
 # LOADING
-# ============================================================
 def load_matched_pairs(matched_csv: Path) -> pd.DataFrame:
     """Load the matched-pairs CSV, returning only the TRUE (matched) rows.
 
@@ -167,9 +163,7 @@ def load_scene_spectrum(scene_ur: str, pics_id: str, patch_id: str,
     return spec
 
 
-# ============================================================
 # COMPUTATION
-# ============================================================
 def absorption_band_wavelengths(spec: pd.DataFrame,
                                 rfl_col: str = "median_rfl") -> np.ndarray:
     """Water-vapor bad-band centers, derived from a reflectance-bearing spectrum.
